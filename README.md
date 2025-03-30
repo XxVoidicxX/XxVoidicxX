@@ -1,6 +1,12 @@
 ![@XxVoidicxX (1)](https://github.com/user-attachments/assets/a92e1b87-3a14-4202-bc5e-f78053ac739c)
 
 
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=XxVoidicxX&layout=compact)
+
+![Your GitHub stats](https://github-readme-stats.vercel.app/api?username=XxVoidicxX&show_icons=true&theme=radical)
+
+![Your Streak Stats](https://github-readme-streak-stats.herokuapp.com/?user=XxVoidicxX)
+
 - 👋 Hi, I’m @XxVoidicxX, also known as Voidic.
 - 👀 I’m interested in game server development, automation, cybersecurity, and AI.
 - 🌱 I’m currently learning advanced Python, backend development, and manufacturing certifications.
@@ -8,6 +14,8 @@
 - 📫 How to reach me: [Discord Profile](<https://discord.com/users/719930539280433232>) or [Discord Server](https://discord.gg/JJB5CDks8z)
 - 😄 Pronouns: He/Him.
 - ⚡ Fun fact: I run a large Minecraft Bedrock server network. Also, I once survived a PvP fight with low health against diamond sword users using just an iron sword.
+
+
 
 ![Untitled design (2)](https://github.com/user-attachments/assets/2c628f4c-75c8-45f0-bc35-f8a57ca11f2a)
 
