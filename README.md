@@ -53,5 +53,3 @@ Cosmic AI is a **friendly and interactive chatbot** designed to engage with user
 #### **📡 How to Interact with Cosmic AI**  
 - **Join our Discord Server**: [Click Here to Join](https://discord.gg/JJB5CDks8z)  
 - **Chat Away**: Once in the server, just start typing, and Cosmic AI will reply!
-
-![35e1327e90b051a5f51c0f4983c6b533](https://github.com/user-attachments/assets/284e8939-61b8-44e3-9983-559740b26e46)
