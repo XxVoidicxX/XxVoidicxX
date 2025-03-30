@@ -1,11 +1,14 @@
-![@XxVoidicxX (1)](https://github.com/user-attachments/assets/a92e1b87-3a14-4202-bc5e-f78053ac739c)
+# @XxVoidicxX
 
+![@XxVoidicxX (1)](https://github.com/user-attachments/assets/a92e1b87-3a14-4202-bc5e-f78053ac739c)
 
 ![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=XxVoidicxX&layout=compact)
 
 ![Your GitHub stats](https://github-readme-stats.vercel.app/api?username=XxVoidicxX&show_icons=true&theme=radical)
 
 ![Your Streak Stats](https://github-readme-streak-stats.herokuapp.com/?user=XxVoidicxX)
+
+## About me
 
 - 👋 Hi, I’m @XxVoidicxX, also known as Voidic.
 - 👀 I’m interested in game server development, automation, cybersecurity, and AI.
@@ -15,11 +18,18 @@
 - 😄 Pronouns: He/Him.
 - ⚡ Fun fact: I run a large Minecraft Bedrock server network. Also, I once survived a PvP fight with low health against diamond sword users using just an iron sword.
 
+## Language Stack
 
+![Python](https://img.shields.io/badge/-Python-000000?style=flat&logo=python&logoColor=306998)
+![JavaScript](https://img.shields.io/badge/-JavaScript-000000?style=flat&logo=javascript&logoColor=F7DF1E)
+![HTML5](https://img.shields.io/badge/-HTML5-000000?style=flat&logo=html5&logoColor=E34F26)
+![JSON](https://img.shields.io/badge/-JSON-000000?style=flat&logo=json&logoColor=000000)
+
+# **🚀 Void Server Hub (VSH) - A Minecraft Bedrock Network**  
 
 ![Untitled design (2)](https://github.com/user-attachments/assets/2c628f4c-75c8-45f0-bc35-f8a57ca11f2a)
 
-# **🚀 Void Server Hub (VSH) - A Minecraft Bedrock Network**  
+
 Void Server Hub is a **multi-server network** designed to provide an immersive and secure Minecraft Bedrock experience. It serves as a portal connecting multiple game modes while maintaining strong security measures.  
 
 #### **🌌 Features & Game Modes**  
@@ -49,8 +59,10 @@ We maintain a fair and well-moderated environment. Players can review the **full
 - **🎮 Minecraft Bedrock IP:** (If applicable)  
 - **📖 FAQs & Support:** Available on Discord  
 
+# **Cosmic AI - Your Personal Chatbot** 
+
 ![project_20250303_0517223-01](https://github.com/user-attachments/assets/f4778752-3b56-4475-a53d-df119885442c)
-# **🤖 Cosmic AI - Your Personal Chatbot**  
+ 
 Cosmic AI is a **friendly and interactive chatbot** designed to engage with users in your Discord server. It’s easy to talk to and provides a fun, informative experience for everyone who joins the server.
 
 #### **🌟 Key Features**  
