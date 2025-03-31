@@ -1,14 +1,20 @@
+<div align="center">
+  
 # @XxVoidicxX
 
 ![@XxVoidicxX (1)](https://github.com/user-attachments/assets/a92e1b87-3a14-4202-bc5e-f78053ac739c)
 
-![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=XxVoidicxX&layout=compact)
-
 ![Your GitHub stats](https://github-readme-stats.vercel.app/api?username=XxVoidicxX&show_icons=true&theme=radical)
 
 ![Your Streak Stats](https://github-readme-streak-stats.herokuapp.com/?user=XxVoidicxX)
+![Top Languages](https://github-readme-stats.vercel.app/api/top-langs/?username=XxVoidicxX)
 
 ![snake gif](https://github.com/XxVoidicxX/XxVoidicxX/blob/output/github-snake-dark.svg)
+
+![Python](https://img.shields.io/badge/-Python-000000?style=flat&logo=python&logoColor=306998)
+![JavaScript](https://img.shields.io/badge/-JavaScript-000000?style=flat&logo=javascript&logoColor=F7DF1E)
+![HTML5](https://img.shields.io/badge/-HTML5-000000?style=flat&logo=html5&logoColor=E34F26)
+![JSON](https://img.shields.io/badge/-JSON-000000?style=flat&logo=json&logoColor=000000)
 
 ## About me
 
@@ -20,12 +26,6 @@
 - 😄 Pronouns: He/Him.
 - ⚡ Fun fact: I run a large Minecraft Bedrock server network. Also, I once survived a PvP fight with low health against diamond sword users using just an iron sword.
 
-## Language Stack
-
-![Python](https://img.shields.io/badge/-Python-000000?style=flat&logo=python&logoColor=306998)
-![JavaScript](https://img.shields.io/badge/-JavaScript-000000?style=flat&logo=javascript&logoColor=F7DF1E)
-![HTML5](https://img.shields.io/badge/-HTML5-000000?style=flat&logo=html5&logoColor=E34F26)
-![JSON](https://img.shields.io/badge/-JSON-000000?style=flat&logo=json&logoColor=000000)
 
 # **🚀 Void Server Hub (VSH) - A Minecraft Bedrock Network**  
 
