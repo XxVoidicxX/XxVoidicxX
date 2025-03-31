@@ -8,6 +8,8 @@
 
 ![Your Streak Stats](https://github-readme-streak-stats.herokuapp.com/?user=XxVoidicxX)
 
+![snake gif](https://github.com/XxVoidicxX/XxVoidicxX/blob/output/github-snake-dark.svg)
+
 ## About me
 
 - 👋 Hi, I’m @XxVoidicxX, also known as Voidic.
