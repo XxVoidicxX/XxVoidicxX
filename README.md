@@ -32,7 +32,3 @@
 # **🚀 Void Server Hub (VSH) - A Minecraft Bedrock Network**  
 
 ![Untitled design (2)](https://github.com/user-attachments/assets/2c628f4c-75c8-45f0-bc35-f8a57ca11f2a)
-
-# **Cosmic AI - Your Personal Chatbot** 
-
-![project_20250303_0517223-01](https://github.com/user-attachments/assets/f4778752-3b56-4475-a53d-df119885442c)
