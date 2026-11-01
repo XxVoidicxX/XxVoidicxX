@@ -332,7 +332,7 @@ export function seed() {
   for (let k = 0; k < 160; k++) {
     const v = pick(vendorsAll);
     const action = pick(ACTIONS);
-    const actor = pick(userIds);
+    const actor = action === "complete" ? pick([admin, ...analysts]) : pick(userIds);
     const summaries: Record<string, string> = {
       create: `Created vendor ${v.name}`, update: `Updated ${v.name} (${pick(["annual_spend", "owner_id", "description", "next_review_date", "data_access"])})`, status_change: `${v.name} status changed ${pick(["prospect → onboarding", "onboarding → active", "active → under_review", "under_review → active"])}`,
       submit: `Submitted ${v.name} for onboarding approval`, approve: `Onboarding approved for ${v.name}`, complete: `Completed review of Security & Privacy Due Diligence — ${v.name}`, comment: `Commented: ${pick(["Following up with vendor on SOC 2 bridge letter.", "Renewal pricing received — 6% uplift.", "Escalated MFA gap to vendor security team.", "Scheduled QBR for next month."])}`, login: `${USERS[userIds.indexOf(actor)].name} signed in`,
