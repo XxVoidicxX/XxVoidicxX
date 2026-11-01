@@ -17,7 +17,7 @@ export function refreshDocumentStatuses() {
 }
 
 const SELECT = `SELECT d.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name AS uploaded_by_name, c.title AS contract_title,
-  CAST(julianday(d.expiry_date) - julianday('now') AS INTEGER) AS days_to_expiry
+  CAST(julianday(d.expiry_date) - julianday(date('now')) AS INTEGER) AS days_to_expiry
   FROM documents d JOIN vendors v ON v.id = d.vendor_id LEFT JOIN users u ON u.id = d.uploaded_by LEFT JOIN contracts c ON c.id = d.contract_id`;
 
 documentsRouter.get(

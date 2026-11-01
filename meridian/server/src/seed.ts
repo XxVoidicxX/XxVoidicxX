@@ -6,8 +6,9 @@ let seedState = 20261101;
 function rand() { seedState = (seedState * 1103515245 + 12345) & 0x7fffffff; return seedState / 0x7fffffff; }
 const pick = <T,>(arr: T[]): T => arr[Math.floor(rand() * arr.length)];
 const int = (a: number, b: number) => a + Math.floor(rand() * (b - a + 1));
-const daysFromNow = (d: number) => { const x = new Date("2026-11-01T12:00:00Z"); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); };
-const tsFromNow = (d: number, h = 0) => { const x = new Date("2026-11-01T12:00:00Z"); x.setUTCDate(x.getUTCDate() + d); x.setUTCHours(x.getUTCHours() + h); return x.toISOString().replace("T", " ").slice(0, 19); };
+const NOW = new Date(Date.now() - 60_000);
+const daysFromNow = (d: number) => { const x = new Date(NOW); x.setUTCDate(x.getUTCDate() + d); return x.toISOString().slice(0, 10); };
+const tsFromNow = (d: number, h = 0) => { const x = new Date(NOW); x.setUTCDate(x.getUTCDate() + d); x.setUTCHours(x.getUTCHours() + h); return x.toISOString().replace("T", " ").slice(0, 19); };
 
 const USERS = [
   { name: "Avery Chen", email: "avery.chen@meridian.example", role: "admin", department: "Risk & Compliance", title: "Head of Third-Party Risk" },
@@ -326,7 +327,7 @@ export function seed() {
   for (const f of openHigh) approvalRows.push({ type: "risk_acceptance", entity_type: "finding", entity_id: f.id, title: `Accept risk: ${f.title}`, description: `${f.vendor_name} — ${f.severity} severity.\n\nJustification: Compensating controls in place; vendor remediation scheduled next quarter. Business impact of delay is low.`, requested_by: f.owner_id, status: "pending", priority: f.severity === "high" ? "high" : "normal", created_at: tsFromNow(-int(1, 5)) });
   for (const a of approvalRows) insert("approvals", a);
 
-  const ACTIONS = ["create", "update", "status_change", "submit", "approve", "complete", "comment", "login"];
+  const ACTIONS = ["update", "update", "complete", "comment", "comment", "login"];
   const vendorsAll = all<any>("SELECT id, name FROM vendors");
   for (let k = 0; k < 160; k++) {
     const v = pick(vendorsAll);

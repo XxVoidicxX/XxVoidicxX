@@ -13,7 +13,7 @@ const sevEnum = z.enum(["critical", "high", "medium", "low"]);
 const statusEnum = z.enum(["open", "in_remediation", "risk_accepted", "closed"]);
 
 const SELECT = `SELECT f.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name AS owner_name, a.title AS assessment_title,
-  CAST(julianday(f.due_date) - julianday('now') AS INTEGER) AS days_to_due
+  CAST(julianday(f.due_date) - julianday(date('now')) AS INTEGER) AS days_to_due
   FROM findings f JOIN vendors v ON v.id = f.vendor_id LEFT JOIN users u ON u.id = f.owner_id LEFT JOIN assessments a ON a.id = f.assessment_id`;
 
 findingsRouter.get(
@@ -56,6 +56,7 @@ findingsRouter.post(
     const body = validate(z.object({ vendor_id: z.number().int(), assessment_id: z.number().int().nullable().optional(), title: shortText(200), description: longText(4000), severity: sevEnum, owner_id: z.number().int().nullable().optional(), due_date: optDate, remediation_plan: longText(4000) }), req.body);
     const vendor = get<any>("SELECT * FROM vendors WHERE id = ?", body.vendor_id);
     if (!vendor) throw new HttpError(400, "Vendor does not exist");
+    if (body.due_date && body.due_date < new Date().toISOString().slice(0, 10)) throw new HttpError(400, "Due date cannot be in the past");
     const id = insert("findings", { ...body, owner_id: body.owner_id ?? vendor.owner_id ?? req.user!.id });
     recomputeVendorRisk(body.vendor_id);
     logActivity(req.user!.id, "create", "finding", id, `Raised ${body.severity} finding: ${body.title}`);

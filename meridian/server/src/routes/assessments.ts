@@ -12,7 +12,7 @@ assessmentsRouter.use(requireAuth);
 const SELECT = `SELECT a.*, v.name AS vendor_name, v.tier AS vendor_tier, t.name AS template_name, t.framework, u.name AS assignee_name, r.name AS reviewer_name,
   (SELECT COUNT(*) FROM template_questions q WHERE q.template_id = a.template_id) AS question_count,
   (SELECT COUNT(*) FROM assessment_answers x WHERE x.assessment_id = a.id AND x.answer IS NOT NULL) AS answered_count,
-  CAST(julianday(a.due_date) - julianday('now') AS INTEGER) AS days_to_due
+  CAST(julianday(a.due_date) - julianday(date('now')) AS INTEGER) AS days_to_due
   FROM assessments a JOIN vendors v ON v.id = a.vendor_id JOIN assessment_templates t ON t.id = a.template_id LEFT JOIN users u ON u.id = a.assigned_to LEFT JOIN users r ON r.id = a.reviewer_id`;
 
 assessmentsRouter.get(

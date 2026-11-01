@@ -31,7 +31,7 @@ dashboardRouter.get(
     const kpis = {
       vendors_total: n("SELECT COUNT(*) AS n FROM vendors WHERE status NOT IN ('terminated')"),
       vendors_active: n("SELECT COUNT(*) AS n FROM vendors WHERE status = 'active'"),
-      vendors_critical: n("SELECT COUNT(*) AS n FROM vendors WHERE tier = 'critical' AND status NOT IN ('terminated')"),
+      vendors_critical: n("SELECT COUNT(*) AS n FROM vendors WHERE tier = 'critical' AND status = 'active'"),
       vendors_onboarding: n("SELECT COUNT(*) AS n FROM vendors WHERE status IN ('prospect','onboarding')"),
       avg_residual_risk: Math.round(get<{ a: number }>("SELECT AVG(residual_risk) AS a FROM vendors WHERE status = 'active'")!.a ?? 0),
       findings_open: n("SELECT COUNT(*) AS n FROM findings WHERE status IN ('open','in_remediation')"),
@@ -62,8 +62,8 @@ dashboardRouter.get(
     const findings_by_severity = all("SELECT severity, status, COUNT(*) AS count FROM findings GROUP BY severity, status");
     const spend_by_category = all("SELECT category, SUM(annual_spend) AS spend, COUNT(*) AS vendors FROM vendors WHERE status = 'active' GROUP BY category ORDER BY spend DESC");
     const risk_heatmap = all("SELECT category, tier, COUNT(*) AS count, ROUND(AVG(residual_risk)) AS avg_risk FROM vendors WHERE status NOT IN ('terminated') GROUP BY category, tier");
-    const upcoming_renewals = all("SELECT c.id, c.title, c.end_date, c.value, c.currency, c.auto_renew, v.name AS vendor_name, v.id AS vendor_id, CAST(julianday(c.end_date) - julianday('now') AS INTEGER) AS days_to_end FROM contracts c JOIN vendors v ON v.id = c.vendor_id WHERE c.status IN ('active','expiring') AND c.end_date >= date('now') ORDER BY c.end_date LIMIT 8");
-    const expiring_documents = all("SELECT d.id, d.name, d.type, d.expiry_date, d.status, v.name AS vendor_name, v.id AS vendor_id, CAST(julianday(d.expiry_date) - julianday('now') AS INTEGER) AS days_to_expiry FROM documents d JOIN vendors v ON v.id = d.vendor_id WHERE d.status IN ('expiring','expired') ORDER BY d.expiry_date LIMIT 8");
+    const upcoming_renewals = all("SELECT c.id, c.title, c.end_date, c.value, c.currency, c.auto_renew, v.name AS vendor_name, v.id AS vendor_id, CAST(julianday(c.end_date) - julianday(date('now')) AS INTEGER) AS days_to_end FROM contracts c JOIN vendors v ON v.id = c.vendor_id WHERE c.status IN ('active','expiring') AND c.end_date BETWEEN date('now') AND date('now','+90 days') ORDER BY c.end_date LIMIT 8");
+    const expiring_documents = all("SELECT d.id, d.name, d.type, d.expiry_date, d.status, v.name AS vendor_name, v.id AS vendor_id, CAST(julianday(d.expiry_date) - julianday(date('now')) AS INTEGER) AS days_to_expiry FROM documents d JOIN vendors v ON v.id = d.vendor_id WHERE d.status IN ('expiring','expired') ORDER BY d.expiry_date LIMIT 8");
     const top_risk_vendors = all("SELECT v.id, v.name, v.tier, v.category, v.residual_risk, v.inherent_risk, v.status, (SELECT COUNT(*) FROM findings f WHERE f.vendor_id = v.id AND f.status IN ('open','in_remediation')) AS open_findings FROM vendors v WHERE v.status NOT IN ('terminated') ORDER BY v.residual_risk DESC LIMIT 8");
     const my_tasks = {
       assessments: all("SELECT a.id, a.title, a.status, a.due_date, v.name AS vendor_name FROM assessments a JOIN vendors v ON v.id = a.vendor_id WHERE a.assigned_to = ? AND a.status IN ('not_started','in_progress') ORDER BY a.due_date LIMIT 6", req.user!.id),
@@ -96,7 +96,7 @@ reportsRouter.get(
       SUM(CASE WHEN julianday('now') - julianday(created_at) BETWEEN 61 AND 90 THEN 1 ELSE 0 END) AS d61_90,
       SUM(CASE WHEN julianday('now') - julianday(created_at) > 90 THEN 1 ELSE 0 END) AS d90_plus
       FROM findings WHERE status IN ('open','in_remediation') GROUP BY severity`);
-    const findings_mttr = all(`SELECT severity, COUNT(*) AS resolved, ROUND(AVG(julianday(resolved_at) - julianday(created_at)),1) AS avg_days FROM findings WHERE resolved_at IS NOT NULL GROUP BY severity`);
+    const findings_mttr = all(`SELECT severity, COUNT(*) AS resolved, ROUND(AVG(julianday(resolved_at) - julianday(created_at)),1) AS avg_days FROM findings WHERE status = 'closed' AND resolved_at IS NOT NULL GROUP BY severity`);
     const contract_pipeline = all(`SELECT strftime('%Y-%m', end_date) AS month, COUNT(*) AS contracts, SUM(value) AS value FROM contracts WHERE status IN ('active','expiring') AND end_date BETWEEN date('now') AND date('now','+12 months') GROUP BY month ORDER BY month`);
     const contracts_by_type = all("SELECT type, COUNT(*) AS count, SUM(value) AS value FROM contracts WHERE status IN ('active','expiring') GROUP BY type ORDER BY value DESC");
     const assessment_scores = all("SELECT a.id, a.title, a.score, a.risk_rating, a.completed_at, v.name AS vendor_name, v.tier, t.framework FROM assessments a JOIN vendors v ON v.id = a.vendor_id JOIN assessment_templates t ON t.id = a.template_id WHERE a.status = 'completed' ORDER BY a.score ASC LIMIT 25");

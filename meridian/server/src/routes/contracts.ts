@@ -32,7 +32,7 @@ function assertContractStatus(req: any, from: string | null, to: string | undefi
 }
 
 const SELECT = `SELECT c.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name AS owner_name,
-  CAST(julianday(c.end_date) - julianday('now') AS INTEGER) AS days_to_end,
+  CAST(julianday(c.end_date) - julianday(date('now')) AS INTEGER) AS days_to_end,
   (SELECT COUNT(*) FROM contract_obligations o WHERE o.contract_id = c.id AND o.status = 'pending') AS pending_obligations
   FROM contracts c JOIN vendors v ON v.id = c.vendor_id LEFT JOIN users u ON u.id = c.owner_id`;
 
@@ -113,7 +113,7 @@ contractsRouter.get(
     const contract = get(`${SELECT} WHERE c.id = ?`, id);
     if (!contract) throw notFound("Contract");
     const obligations = all("SELECT o.*, u.name AS owner_name FROM contract_obligations o LEFT JOIN users u ON u.id = o.owner_id WHERE o.contract_id = ? ORDER BY o.due_date", id);
-    const documents = all("SELECT d.*, u.name AS uploaded_by_name, CAST(julianday(d.expiry_date) - julianday('now') AS INTEGER) AS days_to_expiry FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.contract_id = ? ORDER BY d.created_at DESC", id);
+    const documents = all("SELECT d.*, u.name AS uploaded_by_name, CAST(julianday(d.expiry_date) - julianday(date('now')) AS INTEGER) AS days_to_expiry FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.contract_id = ? ORDER BY d.created_at DESC", id);
     const approvals = all("SELECT a.*, u.name AS requested_by_name, ap.name AS approver_name FROM approvals a JOIN users u ON u.id = a.requested_by LEFT JOIN users ap ON ap.id = a.approver_id WHERE a.entity_type = 'contract' AND a.entity_id = ? ORDER BY a.created_at DESC", id);
     const activity = all("SELECT l.*, u.name AS actor_name FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id WHERE l.entity_type = 'contract' AND l.entity_id = ? ORDER BY l.created_at DESC LIMIT 50", id);
     res.json({ data: { ...contract, obligations, documents, approvals, activity } });

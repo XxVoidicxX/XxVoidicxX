@@ -36,7 +36,7 @@ approvalsRouter.get(
     if (req.query.mine === "true") {
       const roles = Object.entries(APPROVER_ROLES).filter(([, r]) => r.includes(req.user!.role)).map(([t]) => t);
       if (!roles.length) where.push("0");
-      else { where.push(`a.type IN (${roles.map(() => "?").join(",")})`); params.push(...roles); }
+      else { where.push(`a.type IN (${roles.map(() => "?").join(",")}) AND a.requested_by != ?`); params.push(...roles, req.user!.id); }
     }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = orderBy(req, ["created_at", "priority", "status", "type", "decided_at"], "created_at");
@@ -84,7 +84,11 @@ approvalsRouter.post(
     update("approvals", id, { status: body.decision, comment: body.comment?.trim() || null, approver_id: req.user!.id, decided_at: now });
     const approved = body.decision === "approved";
     if (a.entity_type === "vendor" && a.type === "vendor_onboarding") {
-      update("vendors", a.entity_id, { status: approved ? "active" : "prospect", onboarded_at: approved ? now : null, updated_at: now });
+      const vendorRow = get<any>("SELECT tier FROM vendors WHERE id = ?", a.entity_id);
+      const cadenceRow = get<{ value: string }>("SELECT value FROM settings WHERE key = 'review_cadence_months'");
+      const cadence = cadenceRow ? JSON.parse(cadenceRow.value) : { critical: 6, high: 12, medium: 24, low: 36 };
+      const next = new Date(); next.setMonth(next.getMonth() + (cadence[vendorRow?.tier ?? "medium"] ?? 12));
+      update("vendors", a.entity_id, { status: approved ? "active" : "prospect", onboarded_at: approved ? now : null, next_review_date: approved ? next.toISOString().slice(0, 10) : null, updated_at: now });
       logActivity(req.user!.id, approved ? "approve" : "reject", "vendor", a.entity_id, `Onboarding ${body.decision}${body.comment ? `: ${body.comment}` : ""}`);
     } else if (a.entity_type === "vendor" && a.type === "offboarding") {
       update("vendors", a.entity_id, { status: approved ? "terminated" : "active", updated_at: now });
