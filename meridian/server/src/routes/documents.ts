@@ -28,14 +28,27 @@ documentsRouter.get(
     const where: string[] = [];
     const params: unknown[] = [];
     if (req.query.q) { where.push("(d.name LIKE ? OR v.name LIKE ? OR d.file_name LIKE ?)"); const q = `%${req.query.q}%`; params.push(q, q, q); }
-    for (const f of ["status", "type", "vendor_id"]) {
+    for (const f of ["status", "type", "vendor_id", "contract_id"]) {
       if (req.query[f]) { const vals = String(req.query[f]).split(","); where.push(`d.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
     }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const order = orderBy(req, ["name", "expiry_date", "issued_date", "type", "status", "vendor_name", "created_at"], "expiry_date");
     const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM documents d JOIN vendors v ON v.id = d.vendor_id ${whereSql}`, ...params)!.n;
-    const data = all(`${SELECT} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
+    const orderSql = /^(expiry_date|issued_date) /.test(order) ? `d.${order.split(" ")[0]} IS NULL, ${order}, d.id` : `${order}, d.id`;
+    const data = all(`${SELECT} ${whereSql} ORDER BY ${orderSql} LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
+  })
+);
+
+documentsRouter.get(
+  "/summary",
+  wrap((_req, res) => {
+    refreshDocumentStatuses();
+    const counts = Object.fromEntries(["valid", "expiring", "expired", "pending_review", "rejected"].map((s) => [s, 0])) as Record<string, number>;
+    for (const r of all<{ status: string; n: number }>("SELECT status, COUNT(*) AS n FROM documents GROUP BY status")) counts[r.status] = r.n;
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const upcoming = all(`${SELECT} WHERE d.expiry_date IS NOT NULL AND d.expiry_date >= date('now') AND d.status != 'rejected' ORDER BY d.expiry_date ASC, d.id ASC LIMIT 5`);
+    res.json({ data: { total, counts, upcoming } });
   })
 );
 

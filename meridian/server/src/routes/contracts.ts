@@ -34,8 +34,10 @@ const SELECT = `SELECT c.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name
 
 function nextNumber() {
   const year = new Date().getFullYear();
-  const row = get<{ n: number }>("SELECT COUNT(*) AS n FROM contracts");
-  return `CTR-${year}-${String((row?.n ?? 0) + 1).padStart(4, "0")}`;
+  const row = get<{ n: number }>("SELECT COALESCE(MAX(id), 0) AS n FROM contracts");
+  let n = (row?.n ?? 0) + 1;
+  while (get("SELECT 1 FROM contracts WHERE contract_number = ?", `CTR-${year}-${String(n).padStart(4, "0")}`)) n++;
+  return `CTR-${year}-${String(n).padStart(4, "0")}`;
 }
 
 export function refreshContractStatuses() {
@@ -64,20 +66,51 @@ contractsRouter.get(
       res.setHeader("Content-Disposition", "attachment; filename=contracts.csv");
       return res.send(toCsv(rows as any, ["id", "contract_number", "title", "vendor_name", "type", "status", "value", "currency", "start_date", "end_date", "auto_renew", "owner_name"]));
     }
-    const data = all(`${SELECT} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
+    const orderSql = /^(end_date|start_date) /.test(order) ? `c.${order.split(" ")[0]} IS NULL, ${order}, c.id` : `${order}, c.id`;
+    const data = all(`${SELECT} ${whereSql} ORDER BY ${orderSql} LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
+  })
+);
+
+contractsRouter.get(
+  "/summary",
+  wrap((_req, res) => {
+    refreshContractStatuses();
+    const live = "status IN ('active','expiring')";
+    const row = get<Record<string, number | null>>(`SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN ${live} THEN 1 ELSE 0 END) AS active_count,
+      SUM(CASE WHEN ${live} THEN value ELSE 0 END) AS active_value,
+      SUM(CASE WHEN end_date BETWEEN date('now') AND date('now', '+30 days') THEN 1 ELSE 0 END) AS expiring_30,
+      SUM(CASE WHEN end_date BETWEEN date('now') AND date('now', '+90 days') THEN 1 ELSE 0 END) AS expiring_90,
+      SUM(CASE WHEN status IN ('draft','in_review') THEN 1 ELSE 0 END) AS in_progress,
+      SUM(CASE WHEN status = 'expired' THEN 1 ELSE 0 END) AS expired,
+      SUM(CASE WHEN ${live} AND auto_renew = 1 THEN 1 ELSE 0 END) AS auto_renew
+      FROM contracts`)!;
+    const ob = get<{ pending: number | null; overdue: number | null }>(`SELECT
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+      SUM(CASE WHEN status = 'pending' AND due_date < date('now') THEN 1 ELSE 0 END) AS overdue
+      FROM contract_obligations`)!;
+    const n = (v: number | null | undefined) => Number(v ?? 0);
+    res.json({
+      data: {
+        total: n(row.total), active_count: n(row.active_count), active_value: n(row.active_value), expiring_30: n(row.expiring_30), expiring_90: n(row.expiring_90),
+        in_progress: n(row.in_progress), expired: n(row.expired), auto_renew: n(row.auto_renew), pending_obligations: n(ob.pending), overdue_obligations: n(ob.overdue),
+      },
+    });
   })
 );
 
 contractsRouter.get(
   "/:id",
   wrap((req, res) => {
+    refreshContractStatuses();
     const id = Number(req.params.id);
     const contract = get(`${SELECT} WHERE c.id = ?`, id);
     if (!contract) throw notFound("Contract");
     const obligations = all("SELECT o.*, u.name AS owner_name FROM contract_obligations o LEFT JOIN users u ON u.id = o.owner_id WHERE o.contract_id = ? ORDER BY o.due_date", id);
-    const documents = all("SELECT * FROM documents WHERE contract_id = ? ORDER BY created_at DESC", id);
-    const approvals = all("SELECT a.*, u.name AS requested_by_name FROM approvals a JOIN users u ON u.id = a.requested_by WHERE a.entity_type = 'contract' AND a.entity_id = ? ORDER BY a.created_at DESC", id);
+    const documents = all("SELECT d.*, u.name AS uploaded_by_name, CAST(julianday(d.expiry_date) - julianday('now') AS INTEGER) AS days_to_expiry FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by WHERE d.contract_id = ? ORDER BY d.created_at DESC", id);
+    const approvals = all("SELECT a.*, u.name AS requested_by_name, ap.name AS approver_name FROM approvals a JOIN users u ON u.id = a.requested_by LEFT JOIN users ap ON ap.id = a.approver_id WHERE a.entity_type = 'contract' AND a.entity_id = ? ORDER BY a.created_at DESC", id);
     const activity = all("SELECT l.*, u.name AS actor_name FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id WHERE l.entity_type = 'contract' AND l.entity_id = ? ORDER BY l.created_at DESC LIMIT 50", id);
     res.json({ data: { ...contract, obligations, documents, approvals, activity } });
   })
@@ -144,7 +177,7 @@ contractsRouter.post(
     const body = validate(z.object({ description: z.string().min(1), due_date: z.string().nullable().optional(), owner_id: z.number().int().nullable().optional() }), req.body);
     const oid = insert("contract_obligations", { ...body, contract_id: id, owner_id: body.owner_id ?? req.user!.id });
     logActivity(req.user!.id, "update", "contract", id, `Added obligation: ${body.description}`);
-    res.status(201).json({ data: get("SELECT * FROM contract_obligations WHERE id = ?", oid) });
+    res.status(201).json({ data: get("SELECT o.*, u.name AS owner_name FROM contract_obligations o LEFT JOIN users u ON u.id = o.owner_id WHERE o.id = ?", oid) });
   })
 );
 contractsRouter.patch(
@@ -157,14 +190,18 @@ contractsRouter.patch(
     const body = validate(z.object({ description: z.string().min(1).optional(), due_date: z.string().nullable().optional(), status: z.enum(["pending", "met", "missed", "waived"]).optional(), owner_id: z.number().int().nullable().optional() }), req.body);
     update("contract_obligations", oid, body);
     if (body.status && body.status !== existing.status) logActivity(req.user!.id, "update", "contract", existing.contract_id, `Obligation "${existing.description}" marked ${body.status}`);
-    res.json({ data: get("SELECT * FROM contract_obligations WHERE id = ?", oid) });
+    res.json({ data: get("SELECT o.*, u.name AS owner_name FROM contract_obligations o LEFT JOIN users u ON u.id = o.owner_id WHERE o.id = ?", oid) });
   })
 );
 contractsRouter.delete(
   "/:id/obligations/:oid",
   canWrite,
   wrap((req, res) => {
-    run("DELETE FROM contract_obligations WHERE id = ? AND contract_id = ?", Number(req.params.oid), Number(req.params.id));
+    const id = Number(req.params.id);
+    const existing = get<any>("SELECT * FROM contract_obligations WHERE id = ? AND contract_id = ?", Number(req.params.oid), id);
+    if (!existing) throw notFound("Obligation");
+    run("DELETE FROM contract_obligations WHERE id = ? AND contract_id = ?", existing.id, id);
+    logActivity(req.user!.id, "update", "contract", id, `Removed obligation: ${existing.description}`);
     res.json({ ok: true });
   })
 );
