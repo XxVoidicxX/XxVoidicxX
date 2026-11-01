@@ -49,7 +49,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
       <div className="w-full max-w-xl rounded-xl bg-white shadow-pop border border-ink-200 overflow-hidden animate-fade-in">
         <div className="flex items-center gap-3 px-4 border-b border-ink-100">
           <Search className="h-4.5 w-4.5 text-ink-400" />
-          <input ref={inputRef} value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Search vendors, contracts, assessments, findings…" className="flex-1 h-12 text-sm outline-none placeholder:text-ink-400" />
+          <input ref={inputRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Search vendors, contracts, assessments, findings…" className="flex-1 h-12 text-sm outline-none placeholder:text-ink-400" />
           <kbd className="text-[11px] text-ink-400 border border-ink-200 rounded px-1.5 py-0.5">ESC</kbd>
         </div>
         <ul className="max-h-[50vh] overflow-y-auto py-2">
