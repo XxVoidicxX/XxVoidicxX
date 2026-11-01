@@ -63,6 +63,7 @@ export interface Actions {
   savePurchase(input: Omit<Purchase, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Purchase;
   saveTask(input: Omit<Task, 'id' | 'createdAt'> & { id?: string }): Task;
   toggleTask(id: string): void;
+  setPaid(id: string, date: string, paid: boolean): void;
   remove(key: CollectionKey, id: string): RemovedSnapshot | null;
   restore(snapshot: RemovedSnapshot): void;
   updateSettings(patch: Partial<Settings>): void;
@@ -141,6 +142,15 @@ export function StoreProvider({ children, initial }: { children: ReactNode; init
           key: 'tasks',
           item: { ...t, done: !t.done, doneAt: !t.done ? nowStamp() : undefined },
         });
+      },
+      setPaid: (id, date, paid) => {
+        const s = dataRef.current.subscriptions.find((x) => x.id === id);
+        if (!s) return;
+        const set = new Set(s.paidFor ?? []);
+        if (paid) set.add(date);
+        else set.delete(date);
+        const paidFor = [...set].sort().slice(-24);
+        dispatch({ type: 'upsert', key: 'subscriptions', item: { ...s, paidFor, updatedAt: nowStamp() } });
       },
       remove: (key, id) => {
         const list = dataRef.current[key] as ItemOf<CollectionKey>[];

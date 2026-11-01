@@ -52,3 +52,15 @@ describe('engine', () => {
     for (let i = 1; i < ev.length; i++) expect(ev[i - 1].date <= ev[i].date).toBe(true);
   });
 });
+
+describe('manual bills', () => {
+  it('suppresses the pay alert once the upcoming charge is marked paid', () => {
+    const today = '2026-11-01';
+    const data = emptyData();
+    data.subscriptions.push({ ...base, kind: 'bill', autopay: false, anchorDate: '2026-01-02' });
+    expect(buildAlerts(data, today).some((a) => a.key.startsWith('manual:'))).toBe(true);
+    data.subscriptions[0] = { ...data.subscriptions[0], paidFor: ['2026-11-02'] };
+    expect(buildAlerts(data, today).some((a) => a.key.startsWith('manual:'))).toBe(false);
+    expect(buildTimeline(data, today, '2026-11-30', today)[0].paid).toBe(true);
+  });
+});

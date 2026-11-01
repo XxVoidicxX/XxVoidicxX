@@ -108,6 +108,7 @@ export function buildTimeline(data: AppData, start: ISODate, end: ISODate, today
 
   for (const s of data.subscriptions) {
     for (const d of chargesBetween(s, start, end)) {
+      const paid = !s.autopay && !!s.paidFor?.includes(d);
       events.push({
         key: `charge:${s.id}:${d}`,
         kind: 'charge',
@@ -115,8 +116,9 @@ export function buildTimeline(data: AppData, start: ISODate, end: ISODate, today
         title: s.name,
         subtitle: s.autopay ? `${categoryMeta(s.category).label} · Autopay` : `${categoryMeta(s.category).label} · Pay manually`,
         amount: s.amount,
-        severity: !s.autopay ? sev(diffDays(d, today), 3) : 'info',
+        severity: !s.autopay && !paid ? sev(diffDays(d, today), 3) : 'info',
         ref: { kind: 'subscription', id: s.id },
+        paid,
       });
     }
     if (s.status === 'trial' && inRange(s.trialEndsOn)) {
@@ -239,7 +241,7 @@ export function buildAlerts(data: AppData, today: ISODate): Alert[] {
     }
     if (s.status === 'active' && !s.autopay) {
       const next = nextChargeDate(s, today);
-      if (next) {
+      if (next && !s.paidFor?.includes(next)) {
         const n = diffDays(next, today);
         if (n >= 0 && n <= lead) {
           alerts.push({

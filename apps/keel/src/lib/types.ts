@@ -50,6 +50,7 @@ export interface Subscription {
   notes?: string;
   priceHistory: PricePoint[];
   cancelledOn?: ISODate;
+  paidFor?: ISODate[];
   createdAt: string;
   updatedAt: string;
 }
@@ -177,4 +178,5 @@ export interface TimelineEvent {
   amount?: number;
   severity: Severity;
   ref: { kind: LinkedKind | 'task'; id: string };
+  paid?: boolean;
 }
