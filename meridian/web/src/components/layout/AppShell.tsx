@@ -91,15 +91,15 @@ export function AppShell() {
 
   return (
     <div className="min-h-full flex">
-      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-ink-200 z-30">{sidebar}</aside>
+      <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-ink-200 z-30 print:hidden">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-ink-900/40" onClick={() => setMobileOpen(false)} />
           <aside className="absolute inset-y-0 left-0 w-64 bg-white shadow-pop">{sidebar}</aside>
         </div>
       )}
-      <div className="flex-1 lg:pl-60 flex flex-col min-w-0">
-        <header className="sticky top-0 z-20 h-16 bg-white/95 backdrop-blur border-b border-ink-200 flex items-center gap-3 px-4 sm:px-6">
+      <div className="flex-1 lg:pl-60 print:pl-0 flex flex-col min-w-0">
+        <header className="print:hidden sticky top-0 z-20 h-16 bg-white/95 backdrop-blur border-b border-ink-200 flex items-center gap-3 px-4 sm:px-6">
           <button className="lg:hidden text-ink-600 p-1 rounded-md hover:bg-ink-100" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
           <button onClick={() => setPaletteOpen(true)} className="flex-1 max-w-xl flex items-center gap-2 h-9 rounded-md border border-ink-200 bg-ink-50 px-3 text-sm text-ink-500 hover:border-ink-300 hover:bg-white transition-colors focus-ring">
             <Search className="h-4 w-4" />

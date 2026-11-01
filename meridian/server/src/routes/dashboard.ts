@@ -6,6 +6,20 @@ import { refreshContractStatuses } from "./contracts.js";
 import { refreshDocumentStatuses } from "./documents.js";
 
 export const dashboardRouter = Router();
+
+const APPROVER_TYPES: Record<string, string[]> = {
+  admin: ["vendor_onboarding", "contract", "risk_acceptance", "offboarding", "document"],
+  risk_analyst: ["vendor_onboarding", "offboarding", "document"],
+  procurement: ["contract"],
+  vendor_owner: [],
+  auditor: [],
+};
+
+function orgName(): string {
+  const row = get<{ value: string }>("SELECT value FROM settings WHERE key = 'org_name'");
+  if (!row) return "Meridian Corp";
+  try { return String(JSON.parse(row.value)); } catch { return row.value; }
+}
 dashboardRouter.use(requireAuth);
 
 dashboardRouter.get(
@@ -35,7 +49,14 @@ dashboardRouter.get(
       reviews_overdue: n("SELECT COUNT(*) AS n FROM vendors WHERE status = 'active' AND next_review_date < date('now')"),
       approvals_pending: n("SELECT COUNT(*) AS n FROM approvals WHERE status = 'pending'"),
       my_approvals_pending: n("SELECT COUNT(*) AS n FROM approvals WHERE status = 'pending' AND requested_by = ?", req.user!.id),
+      contracts_expiring_90_value: get<{ v: number }>("SELECT COALESCE(SUM(value),0) AS v FROM contracts WHERE status IN ('active','expiring') AND end_date BETWEEN date('now') AND date('now','+90 days')")!.v,
+      approvals_to_decide: 0,
+      findings_closed_30d: n("SELECT COUNT(*) AS n FROM findings WHERE resolved_at >= date('now','-30 days')"),
     };
+    const decideTypes = APPROVER_TYPES[req.user!.role] ?? [];
+    const typeIn = decideTypes.length ? `a.type IN (${decideTypes.map(() => "?").join(",")})` : "0";
+    kpis.approvals_to_decide = n(`SELECT COUNT(*) AS n FROM approvals a WHERE a.status = 'pending' AND a.requested_by != ? AND ${typeIn}`, req.user!.id, ...decideTypes);
+    const risk_by_tier = all("SELECT tier, COUNT(*) AS count, ROUND(AVG(residual_risk)) AS avg_residual, COALESCE(SUM(annual_spend),0) AS spend FROM vendors WHERE status NOT IN ('terminated') GROUP BY tier");
     const risk_distribution = all("SELECT tier, COUNT(*) AS count FROM vendors WHERE status NOT IN ('terminated') GROUP BY tier");
     const status_distribution = all("SELECT status, COUNT(*) AS count FROM vendors GROUP BY status");
     const findings_by_severity = all("SELECT severity, status, COUNT(*) AS count FROM findings GROUP BY severity, status");
@@ -48,11 +69,17 @@ dashboardRouter.get(
       assessments: all("SELECT a.id, a.title, a.status, a.due_date, v.name AS vendor_name FROM assessments a JOIN vendors v ON v.id = a.vendor_id WHERE a.assigned_to = ? AND a.status IN ('not_started','in_progress') ORDER BY a.due_date LIMIT 6", req.user!.id),
       reviews: all("SELECT a.id, a.title, a.status, a.due_date, v.name AS vendor_name FROM assessments a JOIN vendors v ON v.id = a.vendor_id WHERE (a.reviewer_id = ? OR ? = 'admin') AND a.status IN ('submitted','under_review') ORDER BY a.submitted_at LIMIT 6", req.user!.id, req.user!.role),
       findings: all("SELECT f.id, f.title, f.severity, f.status, f.due_date, v.name AS vendor_name FROM findings f JOIN vendors v ON v.id = f.vendor_id WHERE f.owner_id = ? AND f.status IN ('open','in_remediation') ORDER BY f.due_date LIMIT 6", req.user!.id),
-      approvals: all("SELECT a.id, a.title, a.type, a.priority, a.created_at, u.name AS requested_by_name FROM approvals a JOIN users u ON u.id = a.requested_by WHERE a.status = 'pending' AND a.requested_by != ? ORDER BY CASE a.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, a.created_at LIMIT 6", req.user!.id),
+      approvals: all(`SELECT a.id, a.title, a.type, a.priority, a.created_at, u.name AS requested_by_name FROM approvals a JOIN users u ON u.id = a.requested_by WHERE a.status = 'pending' AND a.requested_by != ? AND ${typeIn} ORDER BY CASE a.priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'normal' THEN 2 ELSE 3 END, a.created_at LIMIT 6`, req.user!.id, ...decideTypes),
     };
-    const recent_activity = all("SELECT l.*, u.name AS actor_name FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ORDER BY l.created_at DESC, l.id DESC LIMIT 12");
+    const my_task_counts = {
+      assessments: n("SELECT COUNT(*) AS n FROM assessments WHERE assigned_to = ? AND status IN ('not_started','in_progress')", req.user!.id),
+      reviews: n("SELECT COUNT(*) AS n FROM assessments WHERE (reviewer_id = ? OR ? = 'admin') AND status IN ('submitted','under_review')", req.user!.id, req.user!.role),
+      findings: n("SELECT COUNT(*) AS n FROM findings WHERE owner_id = ? AND status IN ('open','in_remediation')", req.user!.id),
+      approvals: kpis.approvals_to_decide,
+    };
+    const recent_activity = all("SELECT l.*, u.name AS actor_name, u.role AS actor_role FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id WHERE l.action NOT IN ('login','logout') ORDER BY l.created_at DESC, l.id DESC LIMIT 12");
     const assessment_trend = all(`SELECT strftime('%Y-%m', completed_at) AS month, COUNT(*) AS completed, ROUND(AVG(score),1) AS avg_score FROM assessments WHERE status = 'completed' AND completed_at >= date('now','-12 months') GROUP BY month ORDER BY month`);
-    res.json({ data: { kpis, risk_distribution, status_distribution, findings_by_severity, spend_by_category, risk_heatmap, upcoming_renewals, expiring_documents, top_risk_vendors, my_tasks, recent_activity, assessment_trend } });
+    res.json({ data: { generated_at: new Date().toISOString(), org_name: orgName(), kpis, risk_by_tier, my_task_counts, risk_distribution, status_distribution, findings_by_severity, spend_by_category, risk_heatmap, upcoming_renewals, expiring_documents, top_risk_vendors, my_tasks, recent_activity, assessment_trend } });
   })
 );
 
@@ -80,7 +107,8 @@ reportsRouter.get(
       FROM vendors v WHERE v.status = 'active' GROUP BY v.tier`);
     const spend_concentration = all("SELECT v.id, v.name, v.category, v.tier, v.annual_spend, v.residual_risk FROM vendors v WHERE v.status = 'active' ORDER BY v.annual_spend DESC LIMIT 10");
     const country_exposure = all("SELECT country, COUNT(*) AS vendors, SUM(annual_spend) AS spend, ROUND(AVG(residual_risk)) AS avg_risk FROM vendors WHERE status = 'active' GROUP BY country ORDER BY vendors DESC");
-    const approvals_sla = all(`SELECT type, COUNT(*) AS total, SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved, SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected, ROUND(AVG(CASE WHEN decided_at IS NOT NULL THEN (julianday(decided_at) - julianday(created_at)) * 24 END),1) AS avg_hours FROM approvals GROUP BY type`);
-    res.json({ data: { risk_by_category, tier_matrix, findings_aging, findings_mttr, contract_pipeline, contracts_by_type, assessment_scores, compliance_coverage, spend_concentration, country_exposure, approvals_sla } });
+    const spend_total = get<{ v: number; n: number }>("SELECT COALESCE(SUM(annual_spend),0) AS v, COUNT(*) AS n FROM vendors WHERE status = 'active'")!;
+    const approvals_sla = all(`SELECT type, COUNT(*) AS total, SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) AS approved, SUM(CASE WHEN status='rejected' THEN 1 ELSE 0 END) AS rejected, SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, SUM(CASE WHEN status='cancelled' THEN 1 ELSE 0 END) AS cancelled, ROUND(MAX(CASE WHEN decided_at IS NOT NULL THEN (julianday(decided_at) - julianday(created_at)) * 24 END),1) AS max_hours, ROUND(AVG(CASE WHEN status='pending' THEN (julianday('now') - julianday(created_at)) * 24 END),1) AS pending_age_hours, ROUND(AVG(CASE WHEN decided_at IS NOT NULL THEN (julianday(decided_at) - julianday(created_at)) * 24 END),1) AS avg_hours FROM approvals GROUP BY type`);
+    res.json({ data: { generated_at: new Date().toISOString(), org_name: orgName(), spend_total_active: spend_total.v, vendors_active: spend_total.n, risk_by_category, tier_matrix, findings_aging, findings_mttr, contract_pipeline, contracts_by_type, assessment_scores, compliance_coverage, spend_concentration, country_exposure, approvals_sla } });
   })
 );
