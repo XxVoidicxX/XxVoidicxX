@@ -74,7 +74,9 @@ export function ForecastChart({
   const y = (v: number) => pad.top + innerH - (v / top) * innerH;
   const band = innerW / forecast.length;
   const barW = Math.max(8, Math.min(40, band * 0.56));
-  const peakIdx = forecast.reduce((best, m, i) => (m.total > forecast[best].total ? i : best), 0);
+  const lowest = forecast.reduce((lo, m) => Math.min(lo, m.total), forecast[0]?.total ?? 0);
+  const rawPeak = forecast.reduce((best, m, i) => (m.total > forecast[best].total ? i : best), 0);
+  const peakIdx = forecast.length && forecast[rawPeak].total - lowest > 1 ? rawPeak : -1;
 
   const drivers = useMemo(() => forecast.map((m) => irregularCharges(m.month, subscriptions).slice(0, 3)), [forecast, subscriptions]);
 
@@ -173,27 +175,29 @@ export function ForecastChart({
           )}
         </div>
       )}
-      <table className="sr-only">
-        <caption>Forecast by month</caption>
-        <thead>
-          <tr>
-            <th>Month</th>
-            <th>Subscriptions</th>
-            <th>Bills</th>
-            <th>Total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {forecast.map((m) => (
-            <tr key={m.month}>
-              <td>{formatDate(m.month, 'monthYear', locale)}</td>
-              <td>{money(m.subscriptions)}</td>
-              <td>{money(m.bills)}</td>
-              <td>{money(m.total)}</td>
+      <div className="sr-only">
+        <table>
+          <caption>Forecast by month</caption>
+          <thead>
+            <tr>
+              <th>Month</th>
+              <th>Subscriptions</th>
+              <th>Bills</th>
+              <th>Total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {forecast.map((m) => (
+              <tr key={m.month}>
+                <td>{formatDate(m.month, 'monthYear', locale)}</td>
+                <td>{money(m.subscriptions)}</td>
+                <td>{money(m.bills)}</td>
+                <td>{money(m.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -203,5 +207,7 @@ export function peakInfo(forecast: MonthForecast[], subscriptions: Subscription[
   const peak = forecast.reduce((best, m) => (m.total > best.total ? m : best), forecast[0]);
   const extras = irregularCharges(peak.month, subscriptions);
   const avg = forecast.reduce((a, m) => a + m.total, 0) / forecast.length;
-  return { peak, extras, avg, total: forecast.reduce((a, m) => a + m.total, 0) };
+  const min = forecast.reduce((lo, m) => Math.min(lo, m.total), forecast[0].total);
+  const steady = peak.total - min <= 1;
+  return { peak, extras, avg, steady, total: forecast.reduce((a, m) => a + m.total, 0) };
 }

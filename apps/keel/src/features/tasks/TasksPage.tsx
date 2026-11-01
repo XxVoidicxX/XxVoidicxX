@@ -51,7 +51,7 @@ export function TasksPage() {
     setParams(next, { replace: true });
   }, [openParam, data.tasks, openEditor, params, setParams]);
 
-  const parsed = useMemo(() => parseQuickTask(draft, today), [draft, today]);
+  const parsed = useMemo(() => parseQuickTask(draft, today, data.settings.locale), [draft, today, data.settings.locale]);
 
   const buckets = useMemo(() => {
     const map = new Map<TaskGroupId, Task[]>();
@@ -82,9 +82,14 @@ export function TasksPage() {
     const t = actions.saveTask({ title: parsed.title.trim(), dueDate: parsed.dueDate, done: false, priority: 'normal' });
     setDraft('');
     toast({
-      title: 'Task added',
-      description: t.dueDate ? `${t.title} · due ${relativeDays(t.dueDate, today).toLowerCase()}` : t.title,
-      action: { label: 'Edit', onClick: () => openEditor({ kind: 'task', id: t.id }) },
+      title: parsed.unparsed ? 'Task added without a due date' : 'Task added',
+      description: t.dueDate
+        ? `${t.title} · due ${relativeDays(t.dueDate, today).toLowerCase()}`
+        : parsed.unparsed
+          ? `Keel couldn't read "${parsed.unparsed}" as a date, so it stays in the title. Edit the task to set one.`
+          : t.title,
+      tone: parsed.unparsed ? 'warning' : 'success',
+      action: { label: parsed.unparsed ? 'Set date' : 'Edit', onClick: () => openEditor({ kind: 'task', id: t.id }) },
     });
     if (view === 'done') setView('open');
   };
@@ -165,6 +170,11 @@ export function TasksPage() {
         {parsed.dueDate && parsed.matched && (
           <p className="tasks-quick-hint" aria-live="polite">
             Creates <strong>"{parsed.title}"</strong> due {formatDate(parsed.dueDate, 'long', data.settings.locale)}. Picked up from "{parsed.matched}".
+          </p>
+        )}
+        {!parsed.dueDate && parsed.unparsed && (
+          <p className="tasks-quick-hint is-warn" aria-live="polite">
+            "{parsed.unparsed}" doesn't look like a date Keel can read, so the task will have no due date. Try "15 dec", "12/15" or "next friday".
           </p>
         )}
       </Card>
@@ -264,7 +274,7 @@ function TaskRow({ task, onToggle, onEdit, onDelete }: { task: Task; onToggle: (
           title={`${link.kindLabel}: ${link.name}`}
         >
           {link.kind === 'subscription' ? (
-            <Monogram name={link.name} color={link.color} size={20} />
+            <Monogram name={link.name} color={link.color} size={22} />
           ) : (
             <span className="tasks-link-icon" aria-hidden>
               {link.kind === 'document' ? <FileText size={12} /> : <Package size={12} />}

@@ -225,7 +225,7 @@ export function SubscriptionsPage() {
               label="Monthly total"
               value={money(insights.monthly)}
               icon={<Wallet size={16} />}
-              hint={`${money(insights.subscriptionsMonthly, { whole: true })} subs · ${money(insights.billsMonthly, { whole: true })} bills`}
+              hint={`${money(insights.subscriptionsMonthly, { whole: insights.subscriptionsMonthly >= 100 })} subs · ${money(insights.billsMonthly, { whole: insights.billsMonthly >= 100 })} bills`}
             />
             <StatCard
               label="Yearly total"

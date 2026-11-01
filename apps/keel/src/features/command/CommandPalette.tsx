@@ -84,7 +84,7 @@ function score(query: string, text: string): number {
     gaps += found - ti;
     ti = found + 1;
   }
-  return q.length >= 2 ? Math.max(1, 18 - gaps) : 0;
+  return q.length >= 3 && gaps <= q.length ? 18 - gaps : 0;
 }
 
 function readRecent(): string[] {

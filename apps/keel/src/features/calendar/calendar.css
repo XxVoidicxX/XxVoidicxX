@@ -190,9 +190,11 @@
   background: var(--surface-2);
 }
 .cal-day.is-out .cal-day-num,
-.cal-day.is-out .cal-chips,
 .cal-day.is-out .cal-day-total {
-  opacity: 0.5;
+  color: var(--text-4);
+}
+.cal-day.is-out .cal-chips {
+  filter: saturate(0.6);
 }
 .cal-day.is-selected {
   background: var(--brand-50);
@@ -291,7 +293,7 @@
   display: block;
   background: var(--brand);
   color: #fff;
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -603,4 +605,16 @@
   .cal-row-title {
     white-space: normal;
   }
+}
+
+.cal-ev.is-paid {
+  background: var(--success-50);
+  color: var(--success-700);
+  border-left-color: var(--success-600);
+}
+.cal-ev {
+  max-width: 100%;
+}
+.cal-ev-text {
+  min-width: 0;
 }

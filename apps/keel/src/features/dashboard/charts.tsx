@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { cx } from '@/components/ui';
 import { formatDate } from '@/lib/dates';
 import type { MonthForecast } from '@/lib/engine';
@@ -109,7 +109,7 @@ export function CategoryDonut({
           })}
         </svg>
         <div className="dash-donut-center">
-          <span className="dash-donut-value tabular">{money(current ? current.value : total, { whole: true })}</span>
+          <span className="dash-donut-value tabular">{money(current ? current.value : total)}</span>
           <span className="dash-donut-label truncate">{current ? current.label : 'per month'}</span>
         </div>
       </div>
@@ -128,7 +128,7 @@ export function CategoryDonut({
               <span className="dash-legend-dot" style={{ background: s.color }} aria-hidden />
               <span className="dash-legend-label truncate">{s.label}</span>
               <span className="dash-legend-pct tabular">{total > 0 ? Math.round((s.value / total) * 100) : 0}%</span>
-              <span className="dash-legend-amt tabular">{money(s.value, { whole: true })}</span>
+              <span className="dash-legend-amt tabular">{money(s.value)}</span>
             </button>
           </li>
         ))}
@@ -173,13 +173,11 @@ export function ForecastChart({ data, money, locale }: { data: MonthForecast[]; 
   const y = (v: number) => padT + innerH - (v / top) * innerH;
   const narrow = width < 460;
 
-  const onKey = (e: KeyboardEvent<SVGRectElement>, i: number) => {
-    const next = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : null;
-    if (next === null || next < 0 || next >= data.length) return;
-    e.preventDefault();
-    const el = (e.currentTarget.parentNode?.parentNode as SVGElement | null)?.querySelectorAll<SVGRectElement>('.dash-fc-hit')[next];
-    el?.focus();
-  };
+  const yearTotal = data.reduce((acc, d) => acc + d.total, 0);
+  const peak = data.reduce<MonthForecast | null>((m, d) => (!m || d.total > m.total ? d : m), null);
+  const summary = `Projected charges for the next 12 months: ${money(yearTotal)} in total${
+    peak ? `, highest in ${formatDate(peak.month, 'monthYear', locale)} at ${money(peak.total)}` : ''
+  }. Full figures are in the table that follows.`;
 
   const a = active !== null ? data[active] : null;
   const ax = active !== null ? padL + band * active + band / 2 : 0;
@@ -187,7 +185,7 @@ export function ForecastChart({ data, money, locale }: { data: MonthForecast[]; 
   return (
     <div className="dash-fc" ref={wrapRef}>
       {width > 0 && (
-        <svg width={width} height={height} role="group" aria-label="Projected charges for the next 12 months">
+        <svg width={width} height={height} role="img" aria-label={summary}>
           {ticks.map((t) => (
             <g key={t}>
               <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} className={t === 0 ? 'dash-fc-base' : 'dash-fc-grid'} />
@@ -231,18 +229,36 @@ export function ForecastChart({ data, money, locale }: { data: MonthForecast[]; 
                 y={padT}
                 width={band}
                 height={innerH}
-                tabIndex={0}
-                aria-label={`${formatDate(d.month, 'monthYear', locale)}: ${money(d.total)} total, ${money(d.subscriptions)} subscriptions, ${money(d.bills)} bills`}
                 onMouseEnter={() => setActive(i)}
                 onMouseLeave={() => setActive(null)}
-                onFocus={() => setActive(i)}
-                onBlur={() => setActive(null)}
-                onKeyDown={(e) => onKey(e, i)}
               />
             ))}
           </g>
         </svg>
       )}
+      <div className="sr-only">
+        <table>
+          <caption>Projected charges by month</caption>
+          <thead>
+            <tr>
+              <th scope="col">Month</th>
+              <th scope="col">Subscriptions</th>
+              <th scope="col">Bills</th>
+              <th scope="col">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((d) => (
+              <tr key={d.month}>
+                <th scope="row">{formatDate(d.month, 'monthYear', locale)}</th>
+                <td>{money(d.subscriptions)}</td>
+                <td>{money(d.bills)}</td>
+                <td>{money(d.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       {a && (
         <div
           className={cx('dash-tip', active === 0 && 'is-start', active === data.length - 1 && 'is-end')}

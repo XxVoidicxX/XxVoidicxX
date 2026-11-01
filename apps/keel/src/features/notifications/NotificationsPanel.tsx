@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, BellOff, CircleAlert, Info, TriangleAlert, X } from 'lucide-react';
+import { ArrowRight, BellOff, CircleAlert, CircleCheck, Info, TriangleAlert, X } from 'lucide-react';
 import { useUI } from '@/app/ui';
 import { Button, Drawer, EmptyState, cx, useToast } from '@/components/ui';
 import { formatDate, relativeDays } from '@/lib/dates';
@@ -8,12 +8,14 @@ import { ROUTES, refPath } from '@/lib/routes';
 import type { Severity } from '@/lib/types';
 import { useAlerts, useMoney } from '@/store/selectors';
 import { useActions, useData, useToday } from '@/store/store';
+import { attentionText, countAlerts, useDismissWithUndo } from './alertHelpers';
+import { useSubscriptionActions } from '@/features/subscriptions/useSubscriptionActions';
 import './notifications.css';
 
 const GROUPS: { severity: Severity; label: string; icon: typeof Info }[] = [
-  { severity: 'critical', label: 'Critical', icon: CircleAlert },
-  { severity: 'warning', label: 'Heads up', icon: TriangleAlert },
-  { severity: 'info', label: 'FYI', icon: Info },
+  { severity: 'critical', label: 'Urgent', icon: CircleAlert },
+  { severity: 'warning', label: 'Needs attention soon', icon: TriangleAlert },
+  { severity: 'info', label: 'Low priority', icon: Info },
 ];
 
 export function NotificationsPanel() {
@@ -25,7 +27,14 @@ export function NotificationsPanel() {
   const data = useData();
   const close = () => setNotificationsOpen(false);
   const info = alerts.filter((a) => a.severity === 'info');
-  const urgent = alerts.length - info.length;
+  const counts = countAlerts(alerts);
+  const dismiss = useDismissWithUndo();
+  const cmd = useSubscriptionActions();
+  const paidHandler = (a: Alert) => {
+    const m = /^manual:(.+):(\d{4}-\d{2}-\d{2})$/.exec(a.key);
+    const sub = m ? data.subscriptions.find((x) => x.id === m[1]) : undefined;
+    return m && sub ? () => cmd.markPaid(sub, m[2], true) : undefined;
+  };
 
   const open = (a: Alert) => {
     close();
@@ -33,8 +42,7 @@ export function NotificationsPanel() {
   };
 
   const dismissAllInfo = () => {
-    info.forEach((a) => actions.dismissAlert(a.key));
-    toast({ title: `Dismissed ${info.length} FYI alert${info.length === 1 ? '' : 's'}`, description: 'Restore them any time in Settings.', tone: 'info' });
+    dismiss(info, `Cleared ${info.length} low-priority alert${info.length === 1 ? '' : 's'}`);
   };
 
   return (
@@ -43,7 +51,7 @@ export function NotificationsPanel() {
       onClose={close}
       width={440}
       title="Notifications"
-      subtitle={alerts.length ? (urgent ? `${urgent} need${urgent === 1 ? 's' : ''} attention · ${alerts.length} total` : `${alerts.length} for your information`) : 'Nothing needs you right now'}
+      subtitle={alerts.length ? attentionText(counts, true) : 'Nothing needs you right now'}
       footer={
         alerts.length > 0 || data.dismissedAlerts.length > 0 ? (
           <div className="notif-foot">
@@ -63,7 +71,7 @@ export function NotificationsPanel() {
             )}
             {info.length > 0 && (
               <Button size="sm" variant="secondary" onClick={dismissAllInfo}>
-                Dismiss all FYI
+                Clear low-priority
               </Button>
             )}
           </div>
@@ -103,7 +111,7 @@ export function NotificationsPanel() {
                 </h3>
                 <ul className="notif-list">
                   {list.map((a) => (
-                    <AlertItem key={a.key} alert={a} onOpen={() => open(a)} onDismiss={() => actions.dismissAlert(a.key)} />
+                    <AlertItem key={a.key} alert={a} onOpen={() => open(a)} onDismiss={() => dismiss(a)} onPaid={paidHandler(a)} />
                   ))}
                 </ul>
               </section>
@@ -115,7 +123,7 @@ export function NotificationsPanel() {
   );
 }
 
-function AlertItem({ alert, onOpen, onDismiss }: { alert: Alert; onOpen: () => void; onDismiss: () => void }) {
+function AlertItem({ alert, onOpen, onDismiss, onPaid }: { alert: Alert; onOpen: () => void; onDismiss: () => void; onPaid?: () => void }) {
   const today = useToday();
   const money = useMoney();
   const { settings } = useData();
@@ -133,9 +141,16 @@ function AlertItem({ alert, onOpen, onDismiss }: { alert: Alert; onOpen: () => v
           )}
           {alert.amount !== undefined && <span className="tabular">{money(alert.amount)}</span>}
         </div>
-        <Button size="sm" variant={alert.severity === 'critical' ? 'primary' : 'secondary'} iconRight={<ArrowRight size={14} />} onClick={onOpen} className="notif-action">
-          {alert.action ?? 'Open'}
-        </Button>
+        <div className="notif-actions">
+          <Button size="sm" variant={alert.severity === 'critical' ? 'primary' : 'secondary'} iconRight={<ArrowRight size={14} />} onClick={onOpen} className="notif-action">
+            {alert.action ?? 'Open'}
+          </Button>
+          {onPaid && (
+            <Button size="sm" variant="ghost" icon={<CircleCheck size={14} />} onClick={onPaid} className="notif-action">
+              Mark paid
+            </Button>
+          )}
+        </div>
       </div>
       <button type="button" className="notif-dismiss" onClick={onDismiss} aria-label={`Dismiss: ${alert.title}`} title="Dismiss">
         <X size={15} />

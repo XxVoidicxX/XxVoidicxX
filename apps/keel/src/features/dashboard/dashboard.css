@@ -401,7 +401,7 @@
   pointer-events: none;
 }
 .dash-donut-value {
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: -0.02em;
 }
@@ -454,7 +454,7 @@
 }
 .dash-legend-amt {
   font-weight: 600;
-  min-width: 64px;
+  min-width: 78px;
   text-align: right;
 }
 
@@ -753,5 +753,224 @@
   }
   .dash-list-row {
     align-items: flex-start;
+  }
+}
+
+.dash-span-4 {
+  grid-column: span 4;
+}
+.dash-span-8 {
+  grid-column: span 8;
+}
+.dash-span-12 {
+  grid-column: span 12;
+}
+.dash-health-explain {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-4);
+}
+
+.dash-start-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.dash-start-step {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: left;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+}
+.dash-start-step:hover {
+  border-color: var(--brand-200);
+  background: var(--brand-50);
+  box-shadow: var(--shadow-xs);
+}
+.dash-start-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--brand-50);
+  color: var(--brand-700);
+  margin-bottom: 4px;
+}
+.dash-start-step:hover .dash-start-icon {
+  background: var(--surface);
+}
+.dash-start-title {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+}
+.dash-start-desc {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-3);
+  flex: 1;
+}
+.dash-start-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-700);
+}
+.dash-start-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  font-size: 13px;
+}
+.dash-start-score-title {
+  margin: 8px 0 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+.dash-checklist {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.dash-check {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.dash-check svg {
+  color: var(--text-4);
+  flex-shrink: 0;
+}
+.dash-check:hover {
+  background: var(--surface-2);
+  color: var(--brand-700);
+}
+.dash-check.is-done {
+  color: var(--text-3);
+  text-decoration: line-through;
+}
+.dash-check.is-done svg {
+  color: var(--success-600);
+}
+.dash-start-examples {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.dash-start-example {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.dash-start-example-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.dash-start-example-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.dash-start-example-sub {
+  font-size: 12px;
+  color: var(--text-4);
+}
+
+@media (max-width: 1180px) {
+  .dash-span-8,
+  .dash-span-4 {
+    grid-column: span 12;
+  }
+  .dash-grid > .dash-kpi {
+    grid-column: span 3;
+  }
+  .dash-kpi .stat {
+    padding: 14px 16px;
+  }
+  .dash-kpi .stat-value {
+    font-size: 22px;
+  }
+  .dash-kpi .stat-hint {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .dash-kpi .stat-footer,
+  .dash-kpi .stat-icon,
+  .dash-kpi .dash-health-explain,
+  .dash-kpi .dash-health-ring {
+    display: none;
+  }
+  .dash-hero {
+    align-items: flex-start;
+  }
+  .dash-hero-actions {
+    display: none;
+  }
+}
+
+@media (max-width: 960px) {
+  .dash-start-steps,
+  .dash-start-examples {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 860px) and (min-width: 721px) {
+  .dash-grid > .dash-kpi {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 720px) {
+  .dash-grid > .dash-kpi {
+    grid-column: span 12;
+  }
+  .dash-kpi .stat-footer {
+    display: block;
+  }
+  .dash-kpi .dash-health-ring,
+  .dash-kpi .stat-icon {
+    display: grid;
   }
 }

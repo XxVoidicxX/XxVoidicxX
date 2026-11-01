@@ -239,11 +239,14 @@ function DocumentEditorForm({ id, defaults, onClose }: EditorProps<DocumentItem>
             className="docs-last4"
             prefix="••••"
             value={draft.numberLast4}
-            onChange={(e) => set('numberLast4', e.target.value.replace(/\s/g, ''))}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '');
+              set('numberLast4', digits.length > 5 ? digits.slice(-4) : digits.slice(0, 4));
+            }}
             inputMode="numeric"
+            pattern="[0-9]*"
             autoComplete="off"
             placeholder="1234"
-            maxLength={4}
             invalid={!!errors.numberLast4}
           />
         </Field>

@@ -1,12 +1,13 @@
-import { useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useId, useRef, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, BellRing, CalendarClock, FileText, Lock, PiggyBank, Plus, ShieldCheck, Sparkles, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, BellRing, CalendarClock, FileText, FileUp, Lock, PiggyBank, Plus, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { Logo } from '@/app/Shell';
 import { useUI } from '@/app/ui';
 import { Button, Field, Input, Select, cx, useToast } from '@/components/ui';
 import { CURRENCIES } from '@/lib/meta';
 import { formatMoney } from '@/lib/money';
 import { useActions } from '@/store/store';
+import { validateImport } from '@/store/persistence';
 import { CURRENCY_NAMES, LOCALES } from '@/features/settings/locales';
 import './welcome.css';
 
@@ -55,7 +56,9 @@ export function Welcome() {
   const { openEditor } = useUI();
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const [name, setName] = useState('');
-  const [members, setMembers] = useState<string[]>(['Shared']);
+  const [members, setMembers] = useState<string[]>([]);
+  const [restoreError, setRestoreError] = useState('');
+  const fileRef = useRef<HTMLInputElement>(null);
   const [memberDraft, setMemberDraft] = useState('');
   const [memberError, setMemberError] = useState('');
   const guessed = useRef(guessLocale()).current;
@@ -67,6 +70,27 @@ export function Welcome() {
     actions.loadSample();
     navigate('/');
     toast({ title: 'Sample household loaded', description: 'Have a look around. You can erase it from Settings whenever you are ready.' });
+  };
+
+  const restore = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setRestoreError('');
+    try {
+      const result = validateImport(JSON.parse(await file.text()));
+      if (!result.ok) {
+        setRestoreError(result.error);
+        return;
+      }
+      const { data } = result;
+      actions.replaceAll({ ...data, settings: { ...data.settings, onboarded: true } });
+      navigate('/');
+      const n = data.subscriptions.length + data.documents.length + data.purchases.length + data.tasks.length;
+      toast({ title: 'Backup restored', description: `${n} item${n === 1 ? '' : 's'} loaded from ${file.name}.` });
+    } catch {
+      setRestoreError('That file could not be read. Choose a .json backup exported from Keel.');
+    }
   };
 
   const addMember = () => {
@@ -111,7 +135,7 @@ export function Welcome() {
   };
 
   return (
-    <div className="welcome">
+    <div className={cx('welcome', step > 0 && 'is-setup')}>
       <section className="welcome-left">
         <div className="welcome-left-inner">
           <Logo />
@@ -167,6 +191,18 @@ export function Welcome() {
                 </span>
                 <ArrowRight size={18} className="welcome-option-arrow" aria-hidden />
               </button>
+              <div className="welcome-restore">
+                <button type="button" className="welcome-restore-btn" onClick={() => fileRef.current?.click()}>
+                  <FileUp size={15} aria-hidden />
+                  Restore from a backup file
+                </button>
+                <input ref={fileRef} type="file" accept="application/json,.json" className="sr-only" tabIndex={-1} aria-hidden onChange={restore} />
+                {restoreError && (
+                  <p className="welcome-restore-error" role="alert">
+                    {restoreError}
+                  </p>
+                )}
+              </div>
               <p className="welcome-card-foot">
                 <ShieldCheck size={14} aria-hidden /> Nothing is uploaded. You can export or erase your data at any time.
               </p>
@@ -192,7 +228,7 @@ export function Welcome() {
                     <Field label="Your first name" htmlFor={`${id}-name`} optional>
                       <Input id={`${id}-name`} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Alex" autoComplete="given-name" maxLength={40} autoFocus />
                     </Field>
-                    <Field label="Who else is in your household?" htmlFor={`${id}-member`} error={memberError} hint='Press Enter after each name. Keep "Shared" for things everyone uses.'>
+                    <Field label="Who else is in your household?" htmlFor={`${id}-member`} error={memberError} hint="Press Enter after each name, or leave it as just you." optional>
                       <div className={cx('welcome-chips', memberError && 'is-invalid')} onClick={() => document.getElementById(`${id}-member`)?.focus()}>
                         <span className="welcome-chip is-you">{name.trim() || 'You'}</span>
                         {members.map((m) => (
@@ -212,7 +248,7 @@ export function Welcome() {
                           }}
                           onKeyDown={onMemberKey}
                           onBlur={() => memberDraft.trim() && addMember()}
-                          placeholder={members.length > 1 ? 'Add another…' : 'Add a name…'}
+                          placeholder={members.length ? 'Add another…' : 'Add a name…'}
                           maxLength={40}
                         />
                       </div>

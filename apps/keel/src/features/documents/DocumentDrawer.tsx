@@ -20,6 +20,7 @@ import { documentTypeMeta } from '@/lib/meta';
 import { ROUTES } from '@/lib/routes';
 import type { DocumentItem } from '@/lib/types';
 import { useActions, useData, useToday } from '@/store/store';
+import { useLinkedTaskFollowUp } from '@/features/tasks/useLinkedTaskFollowUp';
 import { DOC_ICONS, DOC_STATUS, RENEWAL_TIPS, statusSentence, suggestedRenewalExpiry } from './docMeta';
 
 export function DocumentDrawer({ doc, onClose }: { doc: DocumentItem; onClose: () => void }) {
@@ -291,6 +292,7 @@ function MarkRenewedModal({ doc, onClose }: { doc: DocumentItem; onClose: () => 
   const actions = useActions();
   const toast = useToast();
   const { settings } = useData();
+  const followUp = useLinkedTaskFollowUp();
   const [expiry, setExpiry] = useState(() => suggestedRenewalExpiry(doc, today));
   const [error, setError] = useState<string | null>(null);
 
@@ -304,6 +306,7 @@ function MarkRenewedModal({ doc, onClose }: { doc: DocumentItem; onClose: () => 
       title: `${doc.name} marked as renewed`,
       description: `Now valid until ${formatDate(expiry, 'medium', settings.locale)}.`,
     });
+    followUp({ kind: 'document', id: doc.id }, 'it is renewed');
     onClose();
   };
 

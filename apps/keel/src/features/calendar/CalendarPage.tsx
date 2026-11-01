@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CalendarDays, CalendarPlus, ChevronLeft, ChevronRight, ChevronRight as Chevron, Plus, RotateCcw } from 'lucide-react';
-import { Button, EmptyState, PageHeader, Segmented, cx, useToast } from '@/components/ui';
+import { Badge, Button, EmptyState, PageHeader, Segmented, cx, useToast } from '@/components/ui';
 import { useUI } from '@/app/ui';
 import { addDays, addMonths, compareISO, diffDays, formatDate, monthMatrix, relativeDays, startOfMonth } from '@/lib/dates';
 import { buildTimeline } from '@/lib/engine';
@@ -126,9 +126,10 @@ export function CalendarPage() {
     });
   };
 
-  const monthCharges = monthEvents.filter((e) => e.kind === 'charge');
-  const monthDeadlines = monthEvents.filter((e) => e.kind !== 'charge').length;
-  const monthTasks = monthEvents.filter((e) => e.kind === 'task_due').length;
+  const visibleMonth = monthEvents.filter(visible);
+  const monthCharges = visibleMonth.filter((e) => e.kind === 'charge');
+  const monthDeadlines = visibleMonth.filter((e) => e.kind !== 'charge' && e.kind !== 'task_due').length;
+  const monthTasks = visibleMonth.filter((e) => e.kind === 'task_due').length;
   const isCurrentMonth = monthKey === today.slice(0, 7);
 
   return (
@@ -192,7 +193,7 @@ export function CalendarPage() {
                 Today
               </Button>
             </div>
-            <dl className="cal-summary">
+            <dl className="cal-summary" aria-label={hidden.size ? 'Totals for the event types shown' : 'Totals for this month'}>
               <div>
                 <dt>Charges</dt>
                 <dd className="tabular">
@@ -242,6 +243,11 @@ export function CalendarPage() {
 }
 
 type MoneyFn = ReturnType<typeof useMoney>;
+
+function chipTitle(e: TimelineEvent, money: MoneyFn): string {
+  const amt = e.amount !== undefined && e.kind !== 'warranty_end' ? ` · ${money(e.amount)}` : '';
+  return `${kindLabel(e.kind)}: ${e.title}${amt}${e.paid ? ' · Paid' : ''}`;
+}
 
 function MonthGrid({
   weeks,
@@ -322,11 +328,18 @@ function MonthGrid({
                   </span>
                   <span className="cal-chips" aria-hidden>
                     {list.slice(0, 3).map((e) => (
-                      <span key={e.key} className={cx('cal-ev', kindClass(e.kind))} title={`${kindLabel(e.kind)}: ${e.title}`}>
-                        <span className="cal-ev-text">{e.title}</span>
+                      <span key={e.key} className={cx('cal-ev', kindClass(e.kind), e.paid && 'is-paid')} title={chipTitle(e, money)}>
+                        <span className="cal-ev-text">
+                          {e.paid ? '✓ ' : ''}
+                          {e.title}
+                        </span>
                       </span>
                     ))}
-                    {list.length > 3 && <span className="cal-more">+{list.length - 3} more</span>}
+                    {list.length > 3 && (
+                      <span className="cal-more" title={list.slice(3).map((e) => chipTitle(e, money)).join('\n')}>
+                        +{list.length - 3} more
+                      </span>
+                    )}
                   </span>
                   <span className="cal-dots" aria-hidden>
                     {list.slice(0, 4).map((e) => (
@@ -356,6 +369,7 @@ function EventRow({ e, money, locale }: { e: TimelineEvent; money: MoneyFn; loca
             {e.subtitle ? ` · ${e.subtitle}` : ''}
           </span>
         </span>
+        {e.paid && <Badge tone="success">Paid</Badge>}
         {e.amount !== undefined && e.kind !== 'warranty_end' && (
           <span className={cx('cal-row-amt tabular', e.kind !== 'charge' && 'is-soft')}>{money(e.amount)}</span>
         )}

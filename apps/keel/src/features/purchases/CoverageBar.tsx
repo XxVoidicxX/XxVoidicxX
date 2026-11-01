@@ -77,7 +77,7 @@ export function CoverageMini({ p, today, locale }: { p: Purchase; today: ISODate
         <Lane kind="return" end={rd} scale={scale} today={today} muted={muted} />
         <span className="buy-mini-label">Warranty</span>
         <Lane kind="warranty" end={we} scale={scale} today={today} muted={muted} />
-        <span className="buy-today" style={{ left: `calc(58px + (100% - 58px) * ${pToday / 100})` }} />
+        {!muted && <span className="buy-today" style={{ left: `calc(58px + (100% - 58px) * ${pToday / 100})` }} />}
       </div>
       <span className="buy-mini-text">{summary}</span>
     </div>
@@ -96,25 +96,27 @@ export function CoverageTimeline({ p, today, locale }: { p: Purchase; today: ISO
   const rel = (iso: ISODate) => relativeDays(iso, today);
 
   return (
-    <div className="buy-tl">
+    <div className={cx('buy-tl', muted && 'is-returned')}>
       <div className="buy-tl-grid">
         <span />
         <div className="buy-tl-today-row">
-          <span className={cx('buy-tl-today-label', `is-${align}`)} style={{ left: `${pToday}%` }}>
-            Today
-          </span>
+          {!muted && (
+            <span className={cx('buy-tl-today-label', `is-${align}`)} style={{ left: `${pToday}%` }}>
+              Today
+            </span>
+          )}
         </div>
 
         <span className="buy-tl-label">Return</span>
         <div className="buy-tl-lane-wrap">
           <Lane kind="return" end={rd} scale={scale} today={today} muted={muted} />
-          <span className="buy-tl-marker" style={{ left: `${pToday}%` }} />
+          {!muted && <span className="buy-tl-marker" style={{ left: `${pToday}%` }} />}
         </div>
 
         <span className="buy-tl-label">Warranty</span>
         <div className="buy-tl-lane-wrap">
           <Lane kind="warranty" end={we} midpoint={p.extendedWarrantyMonths ? mfg : null} scale={scale} today={today} muted={muted} />
-          <span className="buy-tl-marker" style={{ left: `${pToday}%` }} />
+          {!muted && <span className="buy-tl-marker" style={{ left: `${pToday}%` }} />}
         </div>
 
         <span />
@@ -130,7 +132,12 @@ export function CoverageTimeline({ p, today, locale }: { p: Purchase; today: ISO
             <span className="buy-key buy-key-return" aria-hidden /> Return window
           </dt>
           <dd>
-            {rd ? (
+            {p.returned ? (
+              <>
+                <strong>Returned</strong>
+                <span>No longer needed</span>
+              </>
+            ) : rd ? (
               <>
                 <strong>{formatDate(rd, 'medium', locale)}</strong>
                 <span>
@@ -147,7 +154,12 @@ export function CoverageTimeline({ p, today, locale }: { p: Purchase; today: ISO
             <span className="buy-key buy-key-warranty" aria-hidden /> Warranty
           </dt>
           <dd>
-            {we ? (
+            {p.returned ? (
+              <>
+                <strong>Returned</strong>
+                <span>Warranty no longer applies</span>
+              </>
+            ) : we ? (
               <>
                 <strong>{formatDate(we, 'medium', locale)}</strong>
                 <span>

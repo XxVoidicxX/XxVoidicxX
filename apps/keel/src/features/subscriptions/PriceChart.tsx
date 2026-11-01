@@ -84,10 +84,6 @@ export function PriceChart({ history, today, locale, format }: Props) {
               r={14}
               className="subs-chart-hit"
               onMouseEnter={() => setHover(i)}
-              onFocus={() => setHover(i)}
-              onBlur={() => setHover(null)}
-              tabIndex={0}
-              aria-label={`${formatDate(p.date, 'medium', locale)}: ${format(p.amount)}`}
             />
           </g>
         ))}

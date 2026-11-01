@@ -502,7 +502,7 @@ export function computeInsights(data: AppData, today: ISODate): Insights {
       opportunities.push({
         key: `overlap:${cat}:${group.map((g) => g.id).sort().join(',')}`,
         kind: 'overlap',
-        title: `${group.length} ${categoryMeta(cat).label.toLowerCase()} services overlap`,
+        title: `${group.length} ${categoryMeta(cat).label} services overlap`,
         detail: `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}. Rotating them could save money.`,
         yearlySavings: round2(toYearly(cheapest.amount, cheapest.cycle)),
         refIds: group.map((g) => g.id),

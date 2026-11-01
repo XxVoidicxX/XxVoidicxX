@@ -23,6 +23,15 @@ Keel is a private, local-first web app for everyday people. It tracks the recurr
 - **Settings**: household members, currency and locale, budget, JSON backup and restore, CSV export, and erase.
 - **Search (⌘K / Ctrl+K)**: find any item, page or action. There is also a notifications panel and a first-run setup screen.
 
+## Gallery
+
+| | |
+| --- | --- |
+| ![Overview](docs/screenshots/02-overview.png) | ![Subscriptions](docs/screenshots/03-subscriptions.png) |
+| ![Documents](docs/screenshots/05-documents.png) | ![Purchases](docs/screenshots/06-purchases.png) |
+| ![Calendar](docs/screenshots/07-calendar.png) | ![Insights](docs/screenshots/08-insights.png) |
+| ![Welcome](docs/screenshots/01-welcome.png) | ![Command palette](docs/screenshots/10-command-palette.png) |
+
 ## Architecture
 
 ```

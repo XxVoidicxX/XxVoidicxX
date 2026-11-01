@@ -225,7 +225,7 @@
 }
 .tasks-link .monogram {
   border-radius: 999px;
-  font-size: 8.5px !important;
+  font-size: 11px !important;
 }
 .tasks-link-icon {
   width: 20px;
@@ -307,4 +307,9 @@
   .tasks-quick-hint {
     padding-left: 16px;
   }
+}
+
+.tasks-quick-hint.is-warn {
+  background: var(--warning-50);
+  color: var(--warning-700);
 }

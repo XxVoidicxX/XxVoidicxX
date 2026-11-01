@@ -11,6 +11,7 @@ export interface SubscriptionCommands {
   cancel(s: Subscription): Promise<boolean>;
   reactivate(s: Subscription): void;
   remind(s: Subscription): void;
+  markPaid(s: Subscription, date: string, paid: boolean): void;
   remove(s: Subscription, after?: () => void): void;
 }
 
@@ -48,7 +49,8 @@ export function useSubscriptionActions(): SubscriptionCommands {
           title: `Mark ${s.name} as cancelled?`,
           description:
             'Keel will stop showing future charges for it and count it toward your savings. This does not cancel it with the provider, so make sure you have cancelled it there too.',
-          confirmLabel: 'Mark cancelled',
+          confirmLabel: 'Yes, mark as cancelled',
+          cancelLabel: 'Go back',
           danger: true,
         });
         if (!ok) return false;
@@ -65,6 +67,15 @@ export function useSubscriptionActions(): SubscriptionCommands {
           kind: 'task',
           defaults: { title: `Review ${s.name}`, link: { kind: 'subscription', id: s.id } },
         }),
+      markPaid: (s, date, paid) => {
+        actions.setPaid(s.id, date, paid);
+        toast({
+          title: paid ? `${s.name} marked as paid` : `${s.name} marked as unpaid`,
+          description: paid ? 'Keel will stop reminding you about this payment.' : undefined,
+          tone: paid ? 'success' : 'info',
+          action: { label: 'Undo', onClick: () => actions.setPaid(s.id, date, !paid) },
+        });
+      },
       remove: (s, after) => {
         const snap = actions.remove('subscriptions', s.id);
         after?.();

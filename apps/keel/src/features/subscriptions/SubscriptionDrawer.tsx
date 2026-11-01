@@ -5,6 +5,7 @@ import {
   ArrowUpRight,
   Ban,
   CalendarClock,
+  CircleCheck,
   ExternalLink,
   Lightbulb,
   Pause,
@@ -146,6 +147,10 @@ function DrawerBody({ sub }: { sub: Subscription }) {
         </div>
       )}
 
+      {sub.status === 'active' && !sub.autopay && next && (
+        <PaidToggle sub={sub} date={next} label={formatDate(next, 'dayMonth', locale)} />
+      )}
+
       <div className="subs-quick" role="group" aria-label="Quick actions">
         {(sub.status === 'active' || sub.status === 'paused') && (
           <Button
@@ -281,7 +286,7 @@ function DrawerBody({ sub }: { sub: Subscription }) {
           <h3 className="subs-section-title">Upcoming charges</h3>
           {charges.length > 0 && (
             <span className="muted subs-small tabular">
-              {money(charges.length * sub.amount)} over the next {charges.length}
+              {money(charges.length * sub.amount)} over the next {charges.length === 1 ? 'charge' : `${charges.length} charges`}
             </span>
           )}
         </div>
@@ -295,6 +300,7 @@ function DrawerBody({ sub }: { sub: Subscription }) {
                 <span className="subs-upcoming-date">{formatDate(d, 'dayMonth', locale)}</span>
                 <span className="muted subs-small">{relativeDays(d, today)}</span>
                 <span className="spacer" />
+                {!sub.autopay && sub.paidFor?.includes(d) && <Badge tone="success">Paid</Badge>}
                 <span className="tabular">{money(sub.amount)}</span>
               </li>
             ))}
@@ -330,6 +336,29 @@ function DrawerBody({ sub }: { sub: Subscription }) {
           <p className="muted subs-empty-line">No tasks linked yet. Add one to review it before it renews.</p>
         )}
       </section>
+    </div>
+  );
+}
+
+function PaidToggle({ sub, date, label }: { sub: Subscription; date: string; label: string }) {
+  const cmd = useSubscriptionActions();
+  const paid = !!sub.paidFor?.includes(date);
+  return (
+    <div className={`subs-paid${paid ? ' is-paid' : ''}`}>
+      <CircleCheck size={18} aria-hidden />
+      <div className="subs-paid-text">
+        <strong>{paid ? `${label} payment recorded` : `${label} payment is not on autopay`}</strong>
+        <span className="muted subs-small">{paid ? 'Keel will not remind you about it again.' : 'Mark it paid once you have paid it so the reminder goes away.'}</span>
+      </div>
+      {paid ? (
+        <Button size="sm" variant="ghost" onClick={() => cmd.markPaid(sub, date, false)} aria-label={`Paid. Undo marking ${label} as paid`}>
+          Paid ✓ · undo
+        </Button>
+      ) : (
+        <Button size="sm" variant="primary" onClick={() => cmd.markPaid(sub, date, true)}>
+          Mark {label} as paid
+        </Button>
+      )}
     </div>
   );
 }

@@ -10,6 +10,7 @@ import { ROUTES } from '@/lib/routes';
 import type { Purchase } from '@/lib/types';
 import { useMoney } from '@/store/selectors';
 import { useActions, useData, useToday } from '@/store/store';
+import { useLinkedTaskFollowUp } from '@/features/tasks/useLinkedTaskFollowUp';
 import { CoverageTimeline } from './CoverageBar';
 import { PURCHASE_ICONS, copyText, coverageBadge, manufacturerEnd, monthsLabel, statusSentence } from './purchaseMeta';
 
@@ -20,6 +21,7 @@ export function PurchaseDrawer({ purchase: p, onClose }: { purchase: Purchase; o
   const toast = useToast();
   const money = useMoney();
   const { openEditor } = useUI();
+  const followUp = useLinkedTaskFollowUp();
   const [claimOpen, setClaimOpen] = useState(false);
   const [copied, setCopied] = useState(false);
   const locale = data.settings.locale;
@@ -41,6 +43,7 @@ export function PurchaseDrawer({ purchase: p, onClose }: { purchase: Purchase; o
       tone: returned ? 'success' : 'info',
       action: { label: 'Undo', onClick: () => actions.savePurchase({ ...p, returned: !returned }) },
     });
+    if (returned) followUp({ kind: 'purchase', id: p.id }, 'it is returned');
   };
 
   const remove = () => {
@@ -92,7 +95,7 @@ export function PurchaseDrawer({ purchase: p, onClose }: { purchase: Purchase; o
       <span>
         {parts.join(' + ')}
         <span className="buy-dl-sub">
-          {compareISO(we, today) >= 0 ? 'Until' : 'Ended'} {fmt(we)}
+          {p.returned ? 'Not needed, item returned' : `${compareISO(we, today) >= 0 ? 'Until' : 'Ended'} ${fmt(we)}`}
           {ext > 0 && mfg ? ` · manufacturer part ends ${fmt(mfg)}` : ''}
         </span>
       </span>
@@ -177,7 +180,7 @@ export function PurchaseDrawer({ purchase: p, onClose }: { purchase: Purchase; o
                     <span>
                       {p.returnDays} days
                       <span className="buy-dl-sub">
-                        {compareISO(rd, today) >= 0 ? 'Until' : 'Closed'} {fmt(rd)}
+                        {p.returned ? 'Item returned' : `${compareISO(rd, today) >= 0 ? 'Until' : 'Closed'} ${fmt(rd)}`}
                       </span>
                     </span>
                   ) : (
@@ -293,6 +296,7 @@ function ClaimModal({ p, onClose }: { p: Purchase; onClose: () => void }) {
     return { subject: subj, body: lines.join('\n') };
   }, [p, issue, locale, money, we, covered, name]);
 
+  const ready = issue.trim().length > 0;
   const full = `Subject: ${subject}\n\n${body}`;
   const mailto = `mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
@@ -316,10 +320,21 @@ function ClaimModal({ p, onClose }: { p: Purchase; onClose: () => void }) {
       description="Describe the problem and Keel will draft a message you can send to the manufacturer or retailer."
       footer={
         <>
-          <a className="btn btn-secondary btn-md buy-mail" href={mailto}>
-            <Mail size={16} aria-hidden /> Open in email
-          </a>
-          <Button variant="primary" icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={copy}>
+          {!ready && (
+            <span className="buy-claim-need" id="buy-claim-need">
+              Describe the problem first
+            </span>
+          )}
+          {ready ? (
+            <a className="btn btn-secondary btn-md buy-mail" href={mailto}>
+              <Mail size={16} aria-hidden /> Open in email
+            </a>
+          ) : (
+            <Button icon={<Mail size={16} />} disabled aria-describedby="buy-claim-need">
+              Open in email
+            </Button>
+          )}
+          <Button variant="primary" icon={copied ? <Check size={16} /> : <Copy size={16} />} onClick={copy} disabled={!ready} aria-describedby={ready ? undefined : 'buy-claim-need'}>
             {copied ? 'Copied' : 'Copy message'}
           </Button>
         </>
@@ -336,7 +351,7 @@ function ClaimModal({ p, onClose }: { p: Purchase; onClose: () => void }) {
             </span>
           </div>
         )}
-        <Field label="What’s the problem?" htmlFor="buy-claim-issue" hint="Be specific: what happens, when it started, and what you’ve tried.">
+        <Field label="What’s the problem?" htmlFor="buy-claim-issue" required hint={ready ? 'Be specific: what happens, when it started, and what you’ve tried.' : 'Required before you can copy or email the message.'}>
           <Textarea
             id="buy-claim-issue"
             rows={4}

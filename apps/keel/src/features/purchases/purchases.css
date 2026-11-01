@@ -681,3 +681,10 @@
     margin-right: 0;
   }
 }
+
+.buy-claim-need {
+  margin-right: auto;
+  align-self: center;
+  font-size: 13px;
+  color: var(--text-3);
+}

@@ -96,7 +96,7 @@ export function Monogram({ name, color, size = 36 }: { name: string; color?: str
     <span
       className="monogram"
       aria-hidden
-      style={{ width: size, height: size, fontSize: size * 0.38, color: c, background: `${c}14`, borderColor: `${c}2e` }}
+      style={{ width: size, height: size, fontSize: Math.max(11, size * 0.38), color: `color-mix(in srgb, ${c} 65%, #000)`, background: `${c}14`, borderColor: `${c}2e` }}
     >
       {letters}
     </span>

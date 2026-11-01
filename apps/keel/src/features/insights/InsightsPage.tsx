@@ -110,7 +110,8 @@ export function InsightsPage() {
         s.cancelUrl || s.url
           ? `Keel will stop counting it. Remember to cancel with ${s.name} too, otherwise you'll still be charged.`
           : `Keel will stop counting it in your totals. Remember to cancel with the provider as well.`,
-      confirmLabel: 'Mark as cancelled',
+      confirmLabel: 'Yes, mark as cancelled',
+      cancelLabel: 'Go back',
       danger: true,
     });
     if (!ok) return;
@@ -214,7 +215,7 @@ export function InsightsPage() {
           }
         />
         <StatCard
-          label="Trial exposure"
+          label="Trials about to charge"
           value={
             <>
               {money(insights.trialExposure)}
@@ -297,7 +298,7 @@ export function InsightsPage() {
                         {subs.length > 1 ? (
                           subs.map((s) => (
                             <button key={s.id} type="button" className="ins-chip" onClick={() => navigate(refPath({ kind: 'subscription', id: s.id }))}>
-                              <Monogram name={s.name} color={categoryMeta(s.category).color} size={18} />
+                              <Monogram name={s.name} color={categoryMeta(s.category).color} size={22} />
                               {s.name}
                             </button>
                           ))
@@ -354,18 +355,24 @@ export function InsightsPage() {
         {peak && peak.peak.total > 0 && (
           <div className="ins-callout">
             <TrendingUp size={16} aria-hidden />
-            <p>
-              <strong>{formatDate(peak.peak.month, 'monthYear', locale)}</strong> is your most expensive month at{' '}
-              <strong>{money(peak.peak.total, { whole: true })}</strong>
-              {peak.avg > 0 && peak.peak.total > peak.avg * 1.05 && <>, {money(peak.peak.total - peak.avg, { whole: true })} above average</>}
-              {peak.extras.length > 0 && (
-                <>
-                  {' '}
-                  — {peak.extras.slice(0, 3).map((e) => `${e.name} (${money(e.amount, { whole: true })})`).join(', ')} renew{peak.extras.length === 1 ? 's' : ''} then.
-                </>
-              )}
-              {peak.extras.length === 0 && '.'}
-            </p>
+            {peak.steady ? (
+              <p>
+                <strong>Steady at {money(peak.avg)} every month.</strong> No month in the next year costs noticeably more than the others.
+              </p>
+            ) : (
+              <p>
+                <strong>{formatDate(peak.peak.month, 'monthYear', locale)}</strong> is your most expensive month at{' '}
+                <strong>{money(peak.peak.total, { whole: true })}</strong>
+                {peak.avg > 0 && peak.peak.total > peak.avg * 1.05 && <>, {money(peak.peak.total - peak.avg, { whole: true })} above average</>}
+                {peak.extras.length > 0 && (
+                  <>
+                    {' '}
+                    — {peak.extras.slice(0, 3).map((e) => `${e.name} (${money(e.amount, { whole: true })})`).join(', ')} renew{peak.extras.length === 1 ? 's' : ''} then.
+                  </>
+                )}
+                {peak.extras.length === 0 && '.'}
+              </p>
+            )}
           </div>
         )}
       </Card>

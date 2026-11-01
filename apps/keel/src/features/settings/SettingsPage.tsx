@@ -25,6 +25,7 @@ import { formatDate } from '@/lib/dates';
 import { CURRENCIES } from '@/lib/meta';
 import { formatMoney } from '@/lib/money';
 import { useAlerts } from '@/store/selectors';
+import { attentionText, countAlerts } from '@/features/notifications/alertHelpers';
 import { useActions, useData, useToday } from '@/store/store';
 import { validateImport } from '@/store/persistence';
 import { exportBackup, exportSubscriptionsCSV } from './dataTransfer';
@@ -458,7 +459,7 @@ function NotificationsSection() {
           <div className="settings-rowtext">
             <p className="settings-rowtitle">Active alerts</p>
             <p className="settings-rowdesc">
-              {alerts.length ? `${alerts.length} alert${alerts.length === 1 ? '' : 's'} right now, ${alerts.filter((a) => a.severity === 'critical').length} critical.` : 'Nothing needs your attention right now.'}
+              {alerts.length ? `${attentionText(countAlerts(alerts), true)}.` : 'Nothing needs your attention right now.'}
             </p>
           </div>
           <Button variant="secondary" onClick={() => setNotificationsOpen(true)}>

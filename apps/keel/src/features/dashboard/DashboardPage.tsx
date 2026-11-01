@@ -5,7 +5,12 @@ import {
   CalendarClock,
   CalendarDays,
   CircleAlert,
+  CircleCheck,
   CircleCheckBig,
+  Circle,
+  CreditCard,
+  FileText,
+  Package,
   FileWarning,
   Info,
   ListChecks,
@@ -30,6 +35,8 @@ import type { Tone } from '@/lib/meta';
 import { useAlerts, useHealth, useInsights, useMoney, useUpcoming } from '@/store/selectors';
 import { useActions, useData, useToday } from '@/store/store';
 import { KindIcon } from '@/features/calendar/kinds';
+import { attentionText, countAlerts, useDismissWithUndo } from '@/features/notifications/alertHelpers';
+import { useSubscriptionActions } from '@/features/subscriptions/useSubscriptionActions';
 import { CategoryDonut, ForecastChart, HealthRing, healthTone, type DonutSlice } from './charts';
 import './dashboard.css';
 
@@ -66,20 +73,36 @@ export function DashboardPage() {
   const { settings } = data;
   const locale = settings.locale;
 
-  const weekCount = alerts.filter((a) => !a.date || diffDays(a.date, today) <= 7).length;
+  const counts = countAlerts(alerts);
   const charges30 = upcoming30.filter((e) => e.kind === 'charge');
   const nextCharge = charges30[0];
   const weekCharges = charges30.filter((e) => diffDays(e.date, today) < 7).reduce((s, e) => s + (e.amount ?? 0), 0);
   const name = settings.displayName.trim();
 
-  const summary =
-    weekCount === 0
-      ? weekCharges > 0
-        ? `Nothing needs your attention this week. ${money(weekCharges)} in charges are scheduled over the next 7 days.`
-        : 'Nothing needs your attention this week. Everything is on track.'
-      : `${weekCount} ${weekCount === 1 ? 'thing needs' : 'things need'} your attention this week${
-          weekCharges > 0 ? `, and ${money(weekCharges)} in charges are due in the next 7 days.` : '.'
-        }`;
+  const isEmpty = data.subscriptions.length + data.documents.length + data.purchases.length + data.tasks.length === 0;
+  const chargesLine = weekCharges > 0 ? ` ${money(weekCharges)} in charges are due in the next 7 days.` : '';
+  const summary = isEmpty
+    ? 'Keel is ready. Add a few things below and it will start keeping an eye on them for you.'
+    : counts.total === 0
+      ? `Nothing needs your attention right now.${chargesLine || ' Everything is on track.'}`
+      : `${attentionText(counts)}.${chargesLine}`;
+
+  if (isEmpty) {
+    return (
+      <div className="dash">
+        <header className="dash-hero">
+          <div className="dash-hero-text">
+            <p className="dash-hero-date">{formatDate(today, 'long', locale)}</p>
+            <h1 className="dash-hero-title">
+              {name ? `Welcome, ${name}` : 'Welcome to Keel'}
+            </h1>
+            <p className="dash-hero-summary">{summary}</p>
+          </div>
+        </header>
+        <GettingStarted />
+      </div>
+    );
+  }
 
   return (
     <div className="dash">
@@ -140,7 +163,7 @@ export function DashboardPage() {
           <HealthStat score={health.score} grade={health.grade} factors={health.factors} />
         </div>
 
-        <div className="dash-span-7">
+        <div className="dash-span-7 dash-attention-cell">
           <AttentionCard alerts={alerts} locale={locale} money={money} />
         </div>
         <div className="dash-span-5">
@@ -235,7 +258,9 @@ function HealthStat({ score, grade, factors }: { score: number; grade: string; f
   return (
     <div className="card stat dash-health">
       <div className="stat-top">
-        <span className="stat-label">Life admin score</span>
+        <span className="stat-label">
+          Life admin score
+        </span>
         <span className={cx('badge', `badge-${tone === 'brand' ? 'brand' : tone}`)}>{grade}</span>
       </div>
       <div className="dash-health-body">
@@ -248,8 +273,9 @@ function HealthStat({ score, grade, factors }: { score: number; grade: string; f
         </div>
       </div>
       <div className="stat-hint truncate" title={worst?.label}>
-        {worst ? `Biggest drag: ${worst.label.toLowerCase()}` : 'Everything is in good shape'}
+        {worst ? `Main issue: ${worst.label.toLowerCase()}` : 'Everything is in good shape'}
       </div>
+      <p className="dash-health-explain">Out of 100: how on top of renewals, trials, returns and tasks you are.</p>
     </div>
   );
 }
@@ -260,14 +286,18 @@ function AttentionCard({ alerts, locale, money }: { alerts: Alert[]; locale: str
   const navigate = useNavigate();
   const actions = useActions();
   const { setNotificationsOpen } = useUI();
-  const toast = useToast();
+  const dismiss = useDismissWithUndo();
+  const cmd = useSubscriptionActions();
+  const { subscriptions, dismissedAlerts } = useData();
   const shown = alerts.slice(0, 5);
-  const critical = alerts.filter((a) => a.severity === 'critical').length;
-  const dismissedCount = useData().dismissedAlerts.length;
+  const counts = countAlerts(alerts);
+  const dismissedCount = dismissedAlerts.length;
 
-  const dismiss = (a: Alert) => {
-    actions.dismissAlert(a.key);
-    toast({ title: 'Alert dismissed', description: 'It will not come back for this date.', tone: 'info' });
+  const paidTarget = (a: Alert) => {
+    const m = /^manual:(.+):(\d{4}-\d{2}-\d{2})$/.exec(a.key);
+    if (!m) return null;
+    const sub = subscriptions.find((x) => x.id === m[1]);
+    return sub ? { sub, date: m[2] } : null;
   };
 
   return (
@@ -277,7 +307,7 @@ function AttentionCard({ alerts, locale, money }: { alerts: Alert[]; locale: str
         title="Needs attention"
         subtitle={
           alerts.length
-            ? `${alerts.length} open item${alerts.length === 1 ? '' : 's'}${critical ? ` · ${critical} urgent` : ''}`
+            ? attentionText(counts, true)
             : 'Trials, renewals and deadlines that need a decision'
         }
         actions={
@@ -310,6 +340,7 @@ function AttentionCard({ alerts, locale, money }: { alerts: Alert[]; locale: str
         <ul className="dash-alerts">
           {shown.map((a) => {
             const Icon = SEVERITY_ICON[a.severity];
+            const pay = paidTarget(a);
             return (
               <li key={a.key} className={cx('dash-alert', `dash-sev-${a.severity}`)}>
                 <span className="dash-alert-icon" aria-hidden>
@@ -332,7 +363,12 @@ function AttentionCard({ alerts, locale, money }: { alerts: Alert[]; locale: str
                 </div>
                 {a.amount !== undefined && <span className="dash-alert-amt tabular">{money(a.amount)}</span>}
                 <div className="dash-alert-actions">
-                  <Button size="sm" variant={a.severity === 'critical' ? 'primary' : 'secondary'} onClick={() => navigate(refPath(a.ref))}>
+                  {pay && (
+                    <Button size="sm" variant="secondary" icon={<CircleCheck size={14} />} onClick={() => cmd.markPaid(pay.sub, pay.date, true)}>
+                      Mark paid
+                    </Button>
+                  )}
+                  <Button size="sm" variant={a.severity === 'critical' ? 'primary' : pay ? 'ghost' : 'secondary'} onClick={() => navigate(refPath(a.ref))}>
                     {a.action ?? 'Open'}
                   </Button>
                   <button type="button" className="dash-icon-btn" aria-label={`Dismiss: ${a.title}`} title="Dismiss" onClick={() => dismiss(a)}>
@@ -403,6 +439,7 @@ function ComingUpCard({ events, today, locale, money }: { events: TimelineEvent[
                           <span className="dash-event-title truncate">{e.title}</span>
                           {e.subtitle && <span className="dash-event-sub truncate">{e.subtitle}</span>}
                         </span>
+                        {e.paid && <Badge tone="success">Paid</Badge>}
                         {e.amount !== undefined && e.kind !== 'warranty_end' && (
                           <span className={cx('dash-event-amt tabular', e.kind !== 'charge' && 'is-soft')}>{money(e.amount)}</span>
                         )}
@@ -671,3 +708,134 @@ function TasksCard({ today, locale }: { today: string; locale: string }) {
   );
 }
 
+
+function GettingStarted() {
+  const { openEditor } = useUI();
+  const actions = useActions();
+  const toast = useToast();
+  const { tasks } = useData();
+  const steps = [
+    {
+      key: 'subscription',
+      icon: CreditCard,
+      title: 'Add a subscription or bill',
+      desc: 'Streaming, phone, rent, insurance. Keel warns you before trials convert and bills come due.',
+      cta: 'Add a subscription',
+      onClick: () => openEditor({ kind: 'subscription' }),
+      done: false,
+    },
+    {
+      key: 'document',
+      icon: FileText,
+      title: 'Add an ID or document',
+      desc: 'Passports, licenses, registrations. Get reminded early enough to renew without a rush.',
+      cta: 'Add an ID',
+      onClick: () => openEditor({ kind: 'document' }),
+      done: false,
+    },
+    {
+      key: 'purchase',
+      icon: Package,
+      title: 'Add a purchase',
+      desc: 'Keep return windows and warranty end dates in one place, with the receipt location.',
+      cta: 'Add a purchase',
+      onClick: () => openEditor({ kind: 'purchase' }),
+      done: false,
+    },
+    {
+      key: 'task',
+      icon: ListChecks,
+      title: 'Add a to-do',
+      desc: 'Anything else on your mind, like booking a DMV appointment.',
+      cta: 'Add a task',
+      onClick: () => openEditor({ kind: 'task' }),
+      done: tasks.length > 0,
+    },
+  ];
+  const doneCount = steps.filter((s) => s.done).length;
+  const examples = [
+    { icon: CircleAlert, tone: 'dash-sev-critical', title: 'Streaming trial ends in 2 days', sub: 'Cancel now or it charges $15.99' },
+    { icon: FileWarning, tone: 'dash-sev-warning', title: "Renew Sam's passport", sub: 'Expires in 9 weeks · processing takes 6' },
+    { icon: Undo2, tone: 'dash-sev-warning', title: 'Return window closes Friday', sub: 'Headphones from Best Buy · $199.99' },
+  ];
+
+  return (
+    <section className="dash-grid dash-start" aria-label="Getting started">
+      <div className="dash-span-8">
+        <Card className="dash-card-fill dash-start-card">
+          <CardHeader icon={<Plus size={16} />} title="Start with what is on your mind" subtitle="Add one thing at a time. You can always change it later." />
+          <ul className="dash-start-steps">
+            {steps.slice(0, 3).map((st) => (
+              <li key={st.key}>
+                <button type="button" className="dash-start-step" onClick={st.onClick}>
+                  <span className="dash-start-icon" aria-hidden>
+                    <st.icon size={20} />
+                  </span>
+                  <span className="dash-start-title">{st.title}</span>
+                  <span className="dash-start-desc">{st.desc}</span>
+                  <span className="dash-start-cta">
+                    {st.cta} <ArrowRight size={14} aria-hidden />
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="dash-start-foot">
+            <span className="muted">Just looking around?</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                actions.loadSample();
+                toast({ title: 'Sample household loaded', description: 'Erase it from Settings whenever you are ready.' });
+              }}
+            >
+              Explore with sample data
+            </Button>
+          </div>
+        </Card>
+      </div>
+      <div className="dash-span-4">
+        <div className="card stat dash-health dash-start-score">
+          <div className="stat-top">
+            <span className="stat-label">Life admin score</span>
+            <span className="badge badge-neutral">
+              {doneCount} of {steps.length}
+            </span>
+          </div>
+          <p className="dash-start-score-title">Add your first items</p>
+          <p className="dash-health-explain">Your score appears once Keel has something to look after.</p>
+          <ul className="dash-checklist">
+            {steps.map((st) => (
+              <li key={st.key}>
+                <button type="button" className={cx('dash-check', st.done && 'is-done')} onClick={st.onClick}>
+                  {st.done ? <CircleCheck size={18} aria-hidden /> : <Circle size={18} aria-hidden />}
+                  <span>{st.title}</span>
+                  <span className="sr-only">{st.done ? '(done)' : '(not done yet)'}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+      <div className="dash-span-12">
+        <Card className="dash-start-preview">
+          <CardHeader icon={<CircleAlert size={16} />} title="What Keel will flag for you" subtitle="Examples of the reminders that show up here once you add your things" />
+          <ul className="dash-start-examples" aria-label="Example reminders">
+            {examples.map((ex) => (
+              <li key={ex.title} className={cx('dash-start-example', ex.tone)}>
+                <span className="dash-alert-icon" aria-hidden>
+                  <ex.icon size={16} />
+                </span>
+                <span className="dash-start-example-text">
+                  <span className="dash-start-example-title">{ex.title}</span>
+                  <span className="dash-start-example-sub">{ex.sub}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    </section>
+  );
+}
