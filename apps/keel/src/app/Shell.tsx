@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import {
   Bell,
@@ -47,10 +47,26 @@ function Sidebar() {
   const { tasks } = useData();
   const openTasks = tasks.filter((t) => !t.done).length;
   const { mobileNavOpen, setMobileNavOpen } = useUI();
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!mobileNavOpen) return;
+    const t = window.setTimeout(() => navRef.current?.querySelector<HTMLElement>('.nav-item')?.focus(), 30);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMobileNavOpen(false);
+        document.querySelector<HTMLElement>('.topbar-menu')?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [mobileNavOpen, setMobileNavOpen]);
   return (
     <>
       <div className={cx('sidebar-scrim', mobileNavOpen && 'is-open')} onClick={() => setMobileNavOpen(false)} aria-hidden />
-      <nav className={cx('sidebar', mobileNavOpen && 'is-open')} aria-label="Main">
+      <nav ref={navRef} className={cx('sidebar', mobileNavOpen && 'is-open')} aria-label="Main">
         <div className="sidebar-brand">
           <Logo />
           <button className="icon-close sidebar-close" onClick={() => setMobileNavOpen(false)} aria-label="Close menu">
@@ -159,7 +175,14 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div className="shell">
-      <a href="#main" className="skip-link">
+      <a
+        href="#main"
+        className="skip-link"
+        onClick={(e) => {
+          e.preventDefault();
+          document.getElementById('main')?.focus();
+        }}
+      >
         Skip to content
       </a>
       <Sidebar />

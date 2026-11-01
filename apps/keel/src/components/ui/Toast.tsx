@@ -25,7 +25,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const push = useCallback(
     (t: ToastInput) => {
       const id = nextId.current++;
-      setItems((xs) => [...xs.slice(-3), { ...t, id }]);
+      setItems((xs) => [...xs.filter((x) => x.title !== t.title).slice(-2), { ...t, id }]);
       window.setTimeout(() => dismiss(id), t.duration ?? (t.action ? 7000 : 4000));
     },
     [dismiss],

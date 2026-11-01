@@ -156,12 +156,17 @@ export function Menu({
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const focusTrigger = () => ref.current?.querySelector<HTMLElement>('[aria-haspopup]')?.focus();
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setOpen(false);
+      focusTrigger();
+    };
     document.addEventListener('mousedown', onDown);
     document.addEventListener('keydown', onKey);
     const first = ref.current?.querySelector<HTMLElement>('[role="menuitem"]');
@@ -203,6 +208,7 @@ export function Menu({
                 className={cx('menu-item', item.danger && 'is-danger')}
                 onClick={() => {
                   setOpen(false);
+                  focusTrigger();
                   item.onSelect();
                 }}
               >

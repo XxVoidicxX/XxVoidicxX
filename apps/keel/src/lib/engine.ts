@@ -531,7 +531,7 @@ export function computeInsights(data: AppData, today: ISODate): Insights {
   }
 
   const cancelledSavingsYearly = data.subscriptions
-    .filter((s) => s.status === 'cancelled')
+    .filter((s) => s.status === 'cancelled' && !(s.trialEndsOn && s.cancelledOn && compareISO(s.cancelledOn, s.trialEndsOn) <= 0))
     .reduce((a, s) => a + toYearly(s.amount, s.cycle), 0);
 
   return {

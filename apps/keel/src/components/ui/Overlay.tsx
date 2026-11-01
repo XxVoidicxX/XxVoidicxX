@@ -52,7 +52,8 @@ function useOverlayBehavior(open: boolean, onClose: () => void, panelRef: React.
       document.removeEventListener('keydown', onKey);
       openCount -= 1;
       if (openCount === 0) document.body.style.overflow = '';
-      previouslyFocused?.focus?.();
+      if (previouslyFocused && previouslyFocused !== document.body && document.contains(previouslyFocused)) previouslyFocused.focus();
+      else document.getElementById('main')?.focus();
     };
   }, [open, panelRef, autoFocus]);
 }
