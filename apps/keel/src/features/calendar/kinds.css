@@ -1,0 +1,40 @@
+.cal-kind-charges {
+  --cal-k: var(--brand-600);
+  --cal-k-bg: var(--brand-50);
+  --cal-k-ink: var(--brand-700);
+}
+.cal-kind-trials {
+  --cal-k: var(--warning-600);
+  --cal-k-bg: var(--warning-50);
+  --cal-k-ink: var(--warning-700);
+}
+.cal-kind-documents {
+  --cal-k: var(--danger-600);
+  --cal-k-bg: var(--danger-50);
+  --cal-k-ink: var(--danger-700);
+}
+.cal-kind-returns {
+  --cal-k: #7c3aed;
+  --cal-k-bg: #f5f3ff;
+  --cal-k-ink: #6d28d9;
+}
+.cal-kind-warranties {
+  --cal-k: #0d9488;
+  --cal-k-bg: #f0fdfa;
+  --cal-k-ink: #0f766e;
+}
+.cal-kind-tasks {
+  --cal-k: var(--success-600);
+  --cal-k-bg: var(--success-50);
+  --cal-k-ink: var(--success-700);
+}
+
+.cal-kind-icon {
+  display: inline-grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--cal-k-bg);
+  color: var(--cal-k-ink);
+  flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cal-k) 14%, transparent);
+}
