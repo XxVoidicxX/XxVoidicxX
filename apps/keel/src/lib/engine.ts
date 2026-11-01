@@ -456,7 +456,7 @@ export function computeInsights(data: AppData, today: ISODate): Insights {
         key: `unused:${s.id}`,
         kind: 'unused',
         title: `Cancel ${s.name}?`,
-        detail: `You marked it as barely used. It costs ${round2(toYearly(s.amount, s.cycle))} a year.`,
+        detail: 'You marked it as barely used. Cancelling saves the full yearly cost.',
         yearlySavings: round2(toYearly(s.amount, s.cycle)),
         refIds: [s.id],
       });
@@ -513,7 +513,7 @@ export function computeInsights(data: AppData, today: ISODate): Insights {
       key: `trial:${s.id}`,
       kind: 'trial',
       title: `Decide on the ${s.name} trial`,
-      detail: s.trialEndsOn ? `Converts to paid on ${s.trialEndsOn}.` : 'Set an end date so you get reminded.',
+      detail: s.trialEndsOn ? 'Cancel before the trial ends if you will not use it.' : 'Set an end date so you get reminded.',
       yearlySavings: round2(toYearly(s.amount, s.cycle)),
       refIds: [s.id],
     });

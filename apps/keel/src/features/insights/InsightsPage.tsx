@@ -303,7 +303,7 @@ export function InsightsPage() {
                           ))
                         ) : first ? (
                           <Button size="sm" variant="secondary" iconRight={<ArrowRight size={14} />} onClick={() => navigate(refPath({ kind: 'subscription', id: first.id }))} aria-label={`Open ${first.name}`}>
-                            Open<span className="ins-hide-sm"> {first.name}</span>
+                            Open<span className="ins-hide-sm">{first.name}</span>
                           </Button>
                         ) : null}
                         {(o.kind === 'unused' || o.kind === 'trial') && first && (

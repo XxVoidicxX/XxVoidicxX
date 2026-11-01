@@ -176,7 +176,7 @@ export function TasksPage() {
           onChange={setView}
           options={[
             { value: 'open', label: 'Open', count: count('open') },
-            { value: 'today', label: <>Today<span className="tasks-hide-sm"> & overdue</span></>, count: count('today') },
+            { value: 'today', label: <>Today<span className="tasks-hide-sm">& overdue</span></>, count: count('today') },
             { value: 'upcoming', label: 'Upcoming', count: count('upcoming') },
             { value: 'done', label: 'Done', count: count('done') },
           ]}

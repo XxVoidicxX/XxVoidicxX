@@ -128,7 +128,7 @@ function AlertItem({ alert, onOpen, onDismiss }: { alert: Alert; onOpen: () => v
         <div className="notif-meta">
           {alert.date && (
             <span title={formatDate(alert.date, 'long', settings.locale)}>
-              {relativeDays(alert.date, today)} · {formatDate(alert.date, 'short', settings.locale)}
+              {/\b(ago|in \d|today|tomorrow)\b/i.test(alert.title + alert.detail) ? formatDate(alert.date, 'dayMonth', settings.locale) : `${relativeDays(alert.date, today)} · ${formatDate(alert.date, 'short', settings.locale)}`}
             </span>
           )}
           {alert.amount !== undefined && <span className="tabular">{money(alert.amount)}</span>}
