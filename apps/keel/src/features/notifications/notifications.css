@@ -1,0 +1,132 @@
+.notif-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.notif-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-bottom: 10px;
+}
+.notif-group-title.is-critical {
+  color: var(--danger-700);
+}
+.notif-group-title.is-warning {
+  color: var(--warning-700);
+}
+.notif-group-title.is-info {
+  color: var(--info-600);
+}
+.notif-count {
+  font-size: 11px;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-2);
+  display: inline-grid;
+  place-items: center;
+  letter-spacing: 0;
+}
+.notif-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.notif-item {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 14px 10px 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+  animation: pop-in 0.15s var(--ease);
+}
+.notif-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--info-600);
+}
+.notif-item.is-critical .notif-bar {
+  background: var(--danger-600);
+}
+.notif-item.is-warning .notif-bar {
+  background: var(--warning-600);
+}
+.notif-item.is-critical {
+  background: linear-gradient(90deg, var(--danger-50), var(--surface) 55%);
+}
+.notif-main {
+  flex: 1;
+  min-width: 0;
+}
+.notif-title {
+  font-weight: 600;
+  font-size: 14px;
+}
+.notif-detail {
+  font-size: 13px;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+.notif-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 500;
+}
+.notif-action {
+  margin-top: 10px;
+}
+.notif-dismiss {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-4);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.notif-dismiss:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.notif-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+}
+.notif-linkbtn {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 13px;
+  font-weight: 550;
+  padding: 4px 0;
+}
+.notif-linkbtn:hover {
+  color: var(--brand-700);
+  text-decoration: underline;
+}

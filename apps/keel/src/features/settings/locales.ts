@@ -1,0 +1,30 @@
+export const LOCALES: { id: string; label: string }[] = [
+  { id: 'en-US', label: 'English (United States)' },
+  { id: 'en-GB', label: 'English (United Kingdom)' },
+  { id: 'en-CA', label: 'English (Canada)' },
+  { id: 'en-AU', label: 'English (Australia)' },
+  { id: 'en-IN', label: 'English (India)' },
+  { id: 'de-DE', label: 'Deutsch (Deutschland)' },
+  { id: 'fr-FR', label: 'Français (France)' },
+  { id: 'es-ES', label: 'Español (España)' },
+  { id: 'es-MX', label: 'Español (México)' },
+  { id: 'pt-BR', label: 'Português (Brasil)' },
+  { id: 'nl-NL', label: 'Nederlands' },
+  { id: 'sv-SE', label: 'Svenska' },
+  { id: 'ja-JP', label: '日本語' },
+];
+
+export const CURRENCY_NAMES: Record<string, string> = {
+  USD: 'US dollar',
+  EUR: 'Euro',
+  GBP: 'British pound',
+  CAD: 'Canadian dollar',
+  AUD: 'Australian dollar',
+  JPY: 'Japanese yen',
+  INR: 'Indian rupee',
+  MXN: 'Mexican peso',
+  BRL: 'Brazilian real',
+  CHF: 'Swiss franc',
+  SEK: 'Swedish krona',
+  NZD: 'New Zealand dollar',
+};
