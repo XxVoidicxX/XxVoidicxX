@@ -28,7 +28,7 @@ findingsRouter.get(
     }
     if (req.query.overdue === "true") where.push("f.due_date < date('now') AND f.status IN ('open','in_remediation')");
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const order = orderBy(req, ["title", "severity", "status", "due_date", "vendor_name", "created_at"], "created_at");
+    const order = orderBy(req, ["title", "severity", "status", "due_date", "vendor_name", "created_at", "owner_name"], "created_at");
     const orderSql = order.startsWith("severity") ? `CASE f.severity WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END ${order.endsWith("DESC") ? "DESC" : "ASC"}` : order;
     const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM findings f JOIN vendors v ON v.id = f.vendor_id ${whereSql}`, ...params)!.n;
     const data = all(`${SELECT} ${whereSql} ORDER BY ${orderSql} LIMIT ? OFFSET ?`, ...params, limit, offset);
