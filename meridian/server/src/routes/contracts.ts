@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update, run } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
-import { HttpError, notFound, orderBy, paginate, toCsv, validate, wrap } from "../http.js";
+import { HttpError, notFound, orderBy, paginate, toCsv, validate, wrap, shortText, longText, optDate, money, dateOrder } from "../http.js";
 import { logActivity, notify, notifyRole } from "../activity.js";
 
 export const contractsRouter = Router();
@@ -13,19 +13,23 @@ const statusEnum = z.enum(["draft", "in_review", "active", "expiring", "expired"
 
 const schema = z.object({
   vendor_id: z.number().int(),
-  title: z.string().min(1),
-  contract_number: z.string().min(1).optional(),
+  title: shortText(200),
+  contract_number: z.string().trim().min(1).max(40).optional(),
   type: typeEnum,
   status: statusEnum.optional(),
-  value: z.number().min(0).optional(),
-  currency: z.string().length(3).optional(),
-  start_date: z.string().nullable().optional(),
-  end_date: z.string().nullable().optional(),
+  value: money.optional(),
+  currency: z.string().trim().length(3).regex(/^[A-Z]{3}$/).optional(),
+  start_date: optDate,
+  end_date: optDate,
   auto_renew: z.boolean().optional(),
-  renewal_notice_days: z.number().int().min(0).optional(),
+  renewal_notice_days: z.number().int().min(0).max(365).optional(),
   owner_id: z.number().int().nullable().optional(),
-  notes: z.string().nullable().optional(),
+  notes: longText(4000),
 });
+function assertContractStatus(req: any, from: string | null, to: string | undefined) {
+  if (!to || to === from || req.user.role === "admin") return;
+  if (to === "active" && (!from || ["draft", "in_review"].includes(from))) throw new HttpError(403, "Contracts become active only through an approved request");
+}
 
 const SELECT = `SELECT c.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name AS owner_name,
   CAST(julianday(c.end_date) - julianday('now') AS INTEGER) AS days_to_end,
@@ -122,6 +126,8 @@ contractsRouter.post(
   wrap((req, res) => {
     const body = validate(schema, req.body);
     if (!get("SELECT id FROM vendors WHERE id = ?", body.vendor_id)) throw new HttpError(400, "Vendor does not exist");
+    dateOrder(body.start_date, body.end_date);
+    assertContractStatus(req, null, body.status);
     const id = insert("contracts", { ...body, contract_number: body.contract_number ?? nextNumber(), status: body.status ?? "draft", owner_id: body.owner_id ?? req.user!.id });
     logActivity(req.user!.id, "create", "contract", id, `Created contract ${body.title}`);
     res.status(201).json({ data: get(`${SELECT} WHERE c.id = ?`, id) });
@@ -136,6 +142,8 @@ contractsRouter.patch(
     const existing = get<any>("SELECT * FROM contracts WHERE id = ?", id);
     if (!existing) throw notFound("Contract");
     const body = validate(schema.partial(), req.body);
+    dateOrder(body.start_date ?? existing.start_date, body.end_date ?? existing.end_date);
+    assertContractStatus(req, existing.status, body.status);
     update("contracts", id, { ...body, updated_at: new Date().toISOString() });
     if (body.status && body.status !== existing.status) {
       logActivity(req.user!.id, "status_change", "contract", id, `${existing.title} status ${existing.status} → ${body.status}`, { from: existing.status, to: body.status });

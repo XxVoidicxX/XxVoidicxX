@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update, run, tx } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
-import { HttpError, notFound, orderBy, paginate, validate, wrap } from "../http.js";
+import { HttpError, notFound, orderBy, paginate, validate, wrap, optDate } from "../http.js";
 import { logActivity, notify } from "../activity.js";
 import { computeAssessmentScore, ratingFromScore, recomputeVendorRisk } from "../risk.js";
 
@@ -106,7 +106,7 @@ assessmentsRouter.post(
   "/",
   canWrite,
   wrap((req, res) => {
-    const body = validate(z.object({ vendor_id: z.number().int(), template_id: z.number().int(), title: z.string().min(1).optional(), assigned_to: z.number().int().nullable().optional(), reviewer_id: z.number().int().nullable().optional(), due_date: z.string().nullable().optional() }), req.body);
+    const body = validate(z.object({ vendor_id: z.number().int(), template_id: z.number().int(), title: z.string().trim().min(1).max(200).optional(), assigned_to: z.number().int().nullable().optional(), reviewer_id: z.number().int().nullable().optional(), due_date: optDate }), req.body);
     const vendor = get<any>("SELECT * FROM vendors WHERE id = ?", body.vendor_id);
     const template = get<any>("SELECT * FROM assessment_templates WHERE id = ?", body.template_id);
     if (!vendor || !template) throw new HttpError(400, "Vendor or template does not exist");
@@ -124,7 +124,7 @@ assessmentsRouter.patch(
     const id = Number(req.params.id);
     const existing = get<any>("SELECT * FROM assessments WHERE id = ?", id);
     if (!existing) throw notFound("Assessment");
-    const body = validate(z.object({ title: z.string().min(1).optional(), assigned_to: z.number().int().nullable().optional(), reviewer_id: z.number().int().nullable().optional(), due_date: z.string().nullable().optional(), summary: z.string().nullable().optional() }), req.body);
+    const body = validate(z.object({ title: z.string().trim().min(1).max(200).optional(), assigned_to: z.number().int().nullable().optional(), reviewer_id: z.number().int().nullable().optional(), due_date: optDate, summary: z.string().trim().max(4000).nullable().optional() }), req.body);
     update("assessments", id, body);
     logActivity(req.user!.id, "update", "assessment", id, `Updated assessment ${existing.title}`, body);
     res.json({ data: get(`${SELECT} WHERE a.id = ?`, id) });

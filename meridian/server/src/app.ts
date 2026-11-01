@@ -19,7 +19,14 @@ import { dashboardRouter, reportsRouter } from "./routes/dashboard.js";
 export function createApp() {
   const app = express();
   app.disable("x-powered-by");
-  app.use(express.json({ limit: "2mb" }));
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    next();
+  });
+  app.use(express.json({ limit: "1mb" }));
   app.use(cookieParser());
   app.use(attachUser);
 
@@ -50,6 +57,11 @@ export function createApp() {
 
   app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     if (err instanceof HttpError) return res.status(err.status).json({ error: err.message, details: err.details });
+    const be = err as { status?: number; type?: string; message?: string };
+    if (be && typeof be.status === "number" && be.status >= 400 && be.status < 500) {
+      const msg = be.type === "entity.too.large" ? "Request body too large" : be.type === "entity.parse.failed" ? "Malformed JSON body" : be.message || "Bad request";
+      return res.status(be.status).json({ error: msg });
+    }
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("UNIQUE constraint")) return res.status(409).json({ error: "A record with that unique value already exists" });
     if (msg.includes("CHECK constraint") || msg.includes("FOREIGN KEY")) return res.status(400).json({ error: msg });

@@ -89,13 +89,21 @@ export function AppShell() {
     </div>
   );
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setMobileOpen(false);
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
+
   return (
     <div className="min-h-full flex">
+      <a href="#main" className="skip-link">Skip to content</a>
       <aside className="hidden lg:flex lg:w-60 lg:flex-col lg:fixed lg:inset-y-0 bg-white border-r border-ink-200 z-30 print:hidden">{sidebar}</aside>
       {mobileOpen && (
         <div className="fixed inset-0 z-40 lg:hidden">
           <div className="absolute inset-0 bg-ink-900/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 w-64 bg-white shadow-pop">{sidebar}</aside>
+          <aside role="dialog" aria-modal="true" aria-label="Navigation" className="absolute inset-y-0 left-0 w-64 bg-white shadow-pop">{sidebar}</aside>
         </div>
       )}
       <div className="flex-1 lg:pl-60 print:pl-0 flex flex-col min-w-0">
@@ -158,7 +166,7 @@ export function AppShell() {
             </div>
           </div>
         </header>
-        <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-[1600px] w-full mx-auto">
+        <main id="main" tabIndex={-1} className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-[1600px] w-full mx-auto outline-none">
           <Outlet />
         </main>
       </div>

@@ -46,19 +46,19 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   };
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-ink-900/40 p-4 pt-[12vh]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="w-full max-w-xl rounded-xl bg-white shadow-pop border border-ink-200 overflow-hidden animate-fade-in">
+      <div role="dialog" aria-modal="true" aria-label="Command palette" className="w-full max-w-xl rounded-xl bg-white shadow-pop border border-ink-200 overflow-hidden animate-fade-in">
         <div className="flex items-center gap-3 px-4 border-b border-ink-100">
           <Search className="h-4.5 w-4.5 text-ink-400" />
-          <input ref={inputRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Search vendors, contracts, assessments, findings…" className="flex-1 h-12 text-sm outline-none placeholder:text-ink-400" />
+          <input ref={inputRef} autoFocus role="combobox" aria-expanded="true" aria-controls="meridian-palette-list" aria-activedescendant={items[idx] ? `palette-opt-${idx}` : undefined} aria-autocomplete="list" aria-label="Search" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={onKey} placeholder="Search vendors, contracts, assessments, findings…" className="flex-1 h-12 text-sm outline-none placeholder:text-ink-400" />
           <kbd className="text-[11px] text-ink-400 border border-ink-200 rounded px-1.5 py-0.5">ESC</kbd>
         </div>
-        <ul className="max-h-[50vh] overflow-y-auto py-2">
+        <ul id="meridian-palette-list" role="listbox" className="max-h-[50vh] overflow-y-auto py-2">
           {items.length === 0 && <li className="px-4 py-8 text-center text-sm text-ink-500">{dq.length >= 2 ? "No matches." : "Type to search across Meridian."}</li>}
           {items.map((item, i) => {
             const Icon = item.kind === "action" ? item.icon : ICONS[item.type];
             return (
-              <li key={item.kind === "action" ? `a-${item.to}` : `${item.type}-${item.id}`}>
-                <button onMouseEnter={() => setIdx(i)} onClick={() => go(item)} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-left", i === idx ? "bg-brand-50" : "hover:bg-ink-50")}>
+              <li key={item.kind === "action" ? `a-${item.to}` : `${item.type}-${item.id}`} id={`palette-opt-${i}`} role="option" aria-selected={i === idx}>
+                <button tabIndex={-1} onMouseEnter={() => setIdx(i)} onClick={() => go(item)} className={clsx("w-full flex items-center gap-3 px-4 py-2.5 text-left", i === idx ? "bg-brand-50" : "hover:bg-ink-50")}>
                   <span className={clsx("h-8 w-8 rounded-md flex items-center justify-center shrink-0", item.kind === "action" ? "bg-ink-100 text-ink-600" : "bg-brand-100 text-brand-700")}><Icon className="h-4 w-4" /></span>
                   <span className="min-w-0 flex-1">
                     <span className="block text-sm font-medium text-ink-900 truncate">{item.kind === "action" ? item.label : item.title}</span>

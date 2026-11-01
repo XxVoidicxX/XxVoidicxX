@@ -19,7 +19,7 @@
   --color-ink-100: #f1f5f9;
   --color-ink-200: #e2e8f0;
   --color-ink-300: #cbd5e1;
-  --color-ink-400: #94a3b8;
+  --color-ink-400: #6b7a90;
   --color-ink-500: #64748b;
   --color-ink-600: #475569;
   --color-ink-700: #334155;
@@ -75,5 +75,6 @@ body {
 .animate-fade-in { animation: fade-in 160ms ease-out; }
 
 .focus-ring { @apply outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white; }
+.skip-link { @apply sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-md focus:bg-brand-700 focus:px-3 focus:py-2 focus:text-sm focus:font-medium focus:text-white; }
 
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.6; }

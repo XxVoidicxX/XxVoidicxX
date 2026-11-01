@@ -70,3 +70,20 @@ export function requireRole(...roles: Role[]) {
 
 export const WRITE_ROLES: Role[] = ["admin", "risk_analyst", "procurement", "vendor_owner"];
 export const canWrite = requireRole(...WRITE_ROLES);
+
+const attempts = new Map<string, { count: number; until: number }>();
+export function checkLoginAllowed(key: string) {
+  const a = attempts.get(key);
+  if (a && a.count >= 10 && Date.now() < a.until) throw new HttpErrorLike(429, "Too many failed sign-in attempts. Try again in 15 minutes.");
+}
+export function recordLoginFailure(key: string) {
+  const a = attempts.get(key);
+  if (!a || Date.now() > a.until) attempts.set(key, { count: 1, until: Date.now() + 15 * 60_000 });
+  else a.count++;
+}
+export function clearLoginFailures(key: string) {
+  attempts.delete(key);
+}
+class HttpErrorLike extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}

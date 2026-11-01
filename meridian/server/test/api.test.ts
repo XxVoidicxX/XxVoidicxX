@@ -287,3 +287,58 @@ describe("documents, comments, search, dashboard", () => {
     for (const a of r.body.data) assert.equal(a.action, "approve");
   });
 });
+
+describe("hardening", () => {
+  test("non-admin cannot bypass onboarding approval via status", async () => {
+    const r = await call(OWNER, "POST", "/api/vendors", { name: "Bypass Co", category: "SaaS", status: "active" });
+    assert.equal(r.status, 403);
+    const v = await call(OWNER, "POST", "/api/vendors", { name: "Bypass Co", category: "SaaS" });
+    const p = await call(OWNER, "PATCH", `/api/vendors/${v.body.data.id}`, { status: "active" });
+    assert.equal(p.status, 403);
+    const c = await call(OWNER, "POST", "/api/contracts", { vendor_id: v.body.data.id, title: "Sneaky", type: "msa", status: "active" });
+    assert.equal(c.status, 403);
+  });
+  test("input validation rejects bad shapes with 400", async () => {
+    assert.equal((await call(ADMIN, "POST", "/api/vendors", { name: "   ", category: "SaaS" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/vendors", { name: "X".repeat(500), category: "SaaS" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/vendors", { name: "Cat", category: "Not a category" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/vendors", { name: "Web", category: "SaaS", website: "javascript:alert(1)" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/vendors", { name: "Spend", category: "SaaS", annual_spend: 1e308 })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/contracts", { vendor_id: 1, title: "Dates", type: "msa", start_date: "2027-01-01", end_date: "2026-01-01" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/documents", { vendor_id: 1, name: "Doc", type: "soc2", issued_date: "2026-05-01", expiry_date: "2026-04-01" })).status, 400);
+    assert.equal((await call(ADMIN, "POST", "/api/comments", { entity_type: "vendor", entity_id: 999999, body: "ghost" })).status, 404);
+    const s = await call(ADMIN, "PUT", "/api/settings", { unknown_key: 1 });
+    assert.equal(s.status, 400);
+  });
+  test("malformed and oversized bodies return 4xx", async () => {
+    const token = await login(ADMIN);
+    const bad = await fetch(`${base}/api/vendors`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: "{not json" });
+    assert.equal(bad.status, 400);
+    const big = await fetch(`${base}/api/vendors`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${token}` }, body: JSON.stringify({ name: "x".repeat(2_000_000), category: "SaaS" }) });
+    assert.equal(big.status, 413);
+    const huge = await call(ADMIN, "GET", "/api/vendors?page=99999999999999999999");
+    assert.equal(huge.status, 200);
+  });
+  test("deleting a vendor cancels its pending approvals", async () => {
+    const v = await call(PROC, "POST", "/api/vendors", { name: "Doomed Vendor", category: "SaaS" });
+    const s = await call(PROC, "POST", `/api/vendors/${v.body.data.id}/submit-onboarding`);
+    assert.equal((await call(ADMIN, "DELETE", `/api/vendors/${v.body.data.id}`)).status, 200);
+    const a = await call(ADMIN, "GET", `/api/approvals/${s.body.approval_id}`);
+    assert.equal(a.body.data.status, "cancelled");
+  });
+  test("csv export neutralises formula injection", async () => {
+    await call(ADMIN, "POST", "/api/vendors", { name: "=HYPERLINK(\"http://evil\")", category: "SaaS" });
+    const token = await login(ADMIN);
+    const text = await (await fetch(`${base}/api/vendors?format=csv&q=HYPERLINK`, { headers: { authorization: `Bearer ${token}` } })).text();
+    assert.ok(text.includes("'=HYPERLINK"));
+  });
+  test("login throttling and bearer logout", async () => {
+    for (let i = 0; i < 10; i++) await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "throttle@meridian.example", password: "nope" }) });
+    const r = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "throttle@meridian.example", password: "nope" }) });
+    assert.equal(r.status, 429);
+    const tok = (await (await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: OWNER, password: "Meridian!2026" }) })).json() as any).token;
+    await fetch(`${base}/api/auth/logout`, { method: "POST", headers: { authorization: `Bearer ${tok}` } });
+    const me = await fetch(`${base}/api/auth/me`, { headers: { authorization: `Bearer ${tok}` } });
+    assert.equal(me.status, 401);
+  });
+});

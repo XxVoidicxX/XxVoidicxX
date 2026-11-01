@@ -73,7 +73,12 @@ approvalsRouter.post(
     if (a.status !== "pending") throw new HttpError(400, "Approval has already been decided");
     if (!(APPROVER_ROLES[a.type] ?? []).includes(req.user!.role)) throw new HttpError(403, `Your role cannot approve ${a.type.replace("_", " ")} requests`);
     if (a.requested_by === req.user!.id) throw new HttpError(403, "You cannot approve your own request (segregation of duties)");
-    const body = validate(z.object({ decision: z.enum(["approved", "rejected"]), comment: z.string().optional().nullable() }), req.body);
+    const entityTable: Record<string, string> = { vendor: "vendors", contract: "contracts", finding: "findings" };
+    if (entityTable[a.entity_type] && !get(`SELECT id FROM ${entityTable[a.entity_type]} WHERE id = ?`, a.entity_id)) {
+      update("approvals", id, { status: "cancelled", decided_at: new Date().toISOString(), comment: "Cancelled: linked record no longer exists" });
+      throw new HttpError(409, "The linked record no longer exists; the request has been cancelled");
+    }
+    const body = validate(z.object({ decision: z.enum(["approved", "rejected"]), comment: z.string().trim().max(2000).optional().nullable() }), req.body);
     if (body.decision === "rejected" && !body.comment?.trim()) throw new HttpError(400, "A comment is required when rejecting");
     const now = new Date().toISOString();
     update("approvals", id, { status: body.decision, comment: body.comment?.trim() || null, approver_id: req.user!.id, decided_at: now });

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update, run, tx } from "../db.js";
 import { requireAuth, canWrite, requireRole } from "../auth.js";
-import { HttpError, notFound, orderBy, paginate, toCsv, validate, wrap } from "../http.js";
+import { HttpError, notFound, orderBy, paginate, toCsv, validate, wrap, shortText, longText, optDate, money, website, email } from "../http.js";
 import { logActivity, notify, notifyRole } from "../activity.js";
 import { computeInherentRisk, recomputeVendorRisk, tierFromInherent } from "../risk.js";
 
@@ -15,22 +15,32 @@ const statusEnum = z.enum(["prospect", "onboarding", "active", "under_review", "
 const tierEnum = z.enum(["critical", "high", "medium", "low"]);
 const accessEnum = z.enum(["none", "internal", "confidential", "restricted"]);
 
+const contactSchema = z.object({ name: shortText(120), email: email.or(z.literal("")).nullable().optional(), phone: z.string().trim().max(40).nullable().optional(), role: z.string().trim().max(80).nullable().optional(), is_primary: z.boolean().optional() });
 const vendorSchema = z.object({
-  name: z.string().min(1),
-  legal_name: z.string().optional().nullable(),
-  category: z.string().min(1),
-  website: z.string().optional().nullable(),
-  country: z.string().optional().nullable(),
+  name: shortText(160),
+  legal_name: z.string().trim().max(200).optional().nullable(),
+  category: z.string().refine((c) => VENDOR_CATEGORIES.includes(c), "Unknown category"),
+  website,
+  country: z.string().trim().max(80).optional().nullable(),
   status: statusEnum.optional(),
   tier: tierEnum.optional(),
   data_access: accessEnum.optional(),
-  annual_spend: z.number().min(0).optional(),
+  annual_spend: money.optional(),
   owner_id: z.number().int().nullable().optional(),
-  description: z.string().optional().nullable(),
-  services: z.string().optional().nullable(),
-  next_review_date: z.string().optional().nullable(),
-  contacts: z.array(z.object({ name: z.string().min(1), email: z.string().optional().nullable(), phone: z.string().optional().nullable(), role: z.string().optional().nullable(), is_primary: z.boolean().optional() })).optional(),
+  description: longText(2000),
+  services: longText(1000),
+  next_review_date: optDate,
+  contacts: z.array(contactSchema).max(20).optional(),
 });
+const APPROVAL_ONLY_STATUSES = ["active"];
+function assertStatusTransition(req: any, from: string | null, to: string | undefined) {
+  if (!to || to === from) return;
+  if (req.user.role === "admin") return;
+  if (APPROVAL_ONLY_STATUSES.includes(to) && (!from || ["prospect", "onboarding"].includes(from))) {
+    throw new HttpError(403, "Vendors become active only through an approved onboarding request");
+  }
+  if (to === "terminated") throw new HttpError(403, "Only administrators can terminate a vendor; request offboarding instead");
+}
 
 const SELECT = `SELECT v.*, u.name AS owner_name,
   (SELECT COUNT(*) FROM contracts c WHERE c.vendor_id = v.id AND c.status IN ('active','expiring')) AS active_contracts,
@@ -130,6 +140,8 @@ vendorsRouter.post(
   wrap((req, res) => {
     const body = validate(vendorSchema, req.body);
     const { contacts, ...v } = body;
+    assertStatusTransition(req, null, v.status);
+    if (v.owner_id && !get("SELECT id FROM users WHERE id = ? AND active = 1", v.owner_id)) throw new HttpError(400, "Owner does not exist");
     const inherent = computeInherentRisk({ data_access: v.data_access ?? "internal", annual_spend: v.annual_spend ?? 0, category: v.category });
     const id = tx(() => {
       const id = insert("vendors", {
@@ -157,6 +169,8 @@ vendorsRouter.patch(
     if (!existing) throw notFound("Vendor");
     const body = validate(vendorSchema.partial(), req.body);
     const { contacts: _c, ...v } = body;
+    assertStatusTransition(req, existing.status, v.status);
+    if (v.owner_id && !get("SELECT id FROM users WHERE id = ? AND active = 1", v.owner_id)) throw new HttpError(400, "Owner does not exist");
     const merged = { ...existing, ...v };
     const inherent = computeInherentRisk(merged);
     const tier = v.tier ?? (inherent !== existing.inherent_risk ? tierFromInherent(inherent) : existing.tier);
@@ -180,7 +194,20 @@ vendorsRouter.delete(
     const id = Number(req.params.id);
     const existing = get<any>("SELECT * FROM vendors WHERE id = ?", id);
     if (!existing) throw notFound("Vendor");
-    run("DELETE FROM vendors WHERE id = ?", id);
+    tx(() => {
+      const contractIds = all<{ id: number }>("SELECT id FROM contracts WHERE vendor_id = ?", id).map((r) => r.id);
+      const findingIds = all<{ id: number }>("SELECT id FROM findings WHERE vendor_id = ?", id).map((r) => r.id);
+      const assessmentIds = all<{ id: number }>("SELECT id FROM assessments WHERE vendor_id = ?", id).map((r) => r.id);
+      const docIds = all<{ id: number }>("SELECT id FROM documents WHERE vendor_id = ?", id).map((r) => r.id);
+      const groups: Array<[string, number[]]> = [["vendor", [id]], ["contract", contractIds], ["finding", findingIds], ["assessment", assessmentIds], ["document", docIds]];
+      for (const [type, ids] of groups) {
+        if (!ids.length) continue;
+        const ph = ids.map(() => "?").join(",");
+        run(`UPDATE approvals SET status = 'cancelled', decided_at = datetime('now'), comment = COALESCE(comment, 'Cancelled: linked record was deleted') WHERE status = 'pending' AND entity_type = ? AND entity_id IN (${ph})`, type, ...ids);
+        run(`DELETE FROM comments WHERE entity_type = ? AND entity_id IN (${ph})`, type, ...ids);
+      }
+      run("DELETE FROM vendors WHERE id = ?", id);
+    });
     logActivity(req.user!.id, "delete", "vendor", id, `Deleted vendor ${existing.name}`);
     res.json({ ok: true });
   })
@@ -215,7 +242,7 @@ vendorsRouter.post(
   wrap((req, res) => {
     const id = Number(req.params.id);
     if (!get("SELECT id FROM vendors WHERE id = ?", id)) throw notFound("Vendor");
-    const body = validate(z.object({ name: z.string().min(1), email: z.string().optional().nullable(), phone: z.string().optional().nullable(), role: z.string().optional().nullable(), is_primary: z.boolean().optional() }), req.body);
+    const body = validate(contactSchema, req.body);
     if (body.is_primary) run("UPDATE vendor_contacts SET is_primary = 0 WHERE vendor_id = ?", id);
     const cid = insert("vendor_contacts", { ...body, vendor_id: id });
     logActivity(req.user!.id, "update", "vendor", id, `Added contact ${body.name}`);

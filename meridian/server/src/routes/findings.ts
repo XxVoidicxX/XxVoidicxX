@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
-import { HttpError, notFound, orderBy, paginate, validate, wrap } from "../http.js";
+import { HttpError, notFound, orderBy, paginate, validate, wrap, shortText, longText, optDate } from "../http.js";
 import { logActivity, notify, notifyRole } from "../activity.js";
 import { recomputeVendorRisk } from "../risk.js";
 
@@ -53,7 +53,7 @@ findingsRouter.post(
   "/",
   canWrite,
   wrap((req, res) => {
-    const body = validate(z.object({ vendor_id: z.number().int(), assessment_id: z.number().int().nullable().optional(), title: z.string().min(1), description: z.string().nullable().optional(), severity: sevEnum, owner_id: z.number().int().nullable().optional(), due_date: z.string().nullable().optional(), remediation_plan: z.string().nullable().optional() }), req.body);
+    const body = validate(z.object({ vendor_id: z.number().int(), assessment_id: z.number().int().nullable().optional(), title: shortText(200), description: longText(4000), severity: sevEnum, owner_id: z.number().int().nullable().optional(), due_date: optDate, remediation_plan: longText(4000) }), req.body);
     const vendor = get<any>("SELECT * FROM vendors WHERE id = ?", body.vendor_id);
     if (!vendor) throw new HttpError(400, "Vendor does not exist");
     const id = insert("findings", { ...body, owner_id: body.owner_id ?? vendor.owner_id ?? req.user!.id });
@@ -72,7 +72,7 @@ findingsRouter.patch(
     const id = Number(req.params.id);
     const existing = get<any>("SELECT * FROM findings WHERE id = ?", id);
     if (!existing) throw notFound("Finding");
-    const body = validate(z.object({ title: z.string().min(1).optional(), description: z.string().nullable().optional(), severity: sevEnum.optional(), status: statusEnum.optional(), owner_id: z.number().int().nullable().optional(), due_date: z.string().nullable().optional(), remediation_plan: z.string().nullable().optional() }), req.body);
+    const body = validate(z.object({ title: shortText(200).optional(), description: longText(4000), severity: sevEnum.optional(), status: statusEnum.optional(), owner_id: z.number().int().nullable().optional(), due_date: optDate, remediation_plan: longText(4000) }), req.body);
     if (body.status === "risk_accepted" && existing.status !== "risk_accepted" && req.user!.role !== "admin") {
       throw new HttpError(400, "Risk acceptance requires an approval — use the request-risk-acceptance action");
     }

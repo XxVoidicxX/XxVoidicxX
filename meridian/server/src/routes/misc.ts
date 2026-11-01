@@ -19,7 +19,9 @@ commentsRouter.post(
   "/",
   canWrite,
   wrap((req, res) => {
-    const body = validate(z.object({ entity_type: entityEnum, entity_id: z.number().int(), body: z.string().min(1).max(4000) }), req.body);
+    const body = validate(z.object({ entity_type: entityEnum, entity_id: z.number().int(), body: z.string().trim().min(1).max(4000) }), req.body);
+    const table: Record<string, string> = { vendor: "vendors", contract: "contracts", assessment: "assessments", finding: "findings", approval: "approvals", document: "documents" };
+    if (!get(`SELECT id FROM ${table[body.entity_type]} WHERE id = ?`, body.entity_id)) throw notFound("Linked record");
     const id = insert("comments", { ...body, author_id: req.user!.id });
     logActivity(req.user!.id, "comment", body.entity_type, body.entity_id, `Commented: ${body.body.slice(0, 80)}${body.body.length > 80 ? "…" : ""}`);
     res.status(201).json({ data: get("SELECT c.*, u.name AS author_name, u.role AS author_role FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?", id) });
@@ -122,11 +124,12 @@ settingsRouter.put(
       review_cadence_months: z.object({ critical: int(1, 60), high: int(1, 60), medium: int(1, 60), low: int(1, 60) }).optional(),
       risk_thresholds: z.object({ low: int(1, 100), medium: int(1, 100), high: int(1, 100) }).refine((t) => t.low > t.medium && t.medium > t.high, { message: "Thresholds must satisfy low > medium > high" }).optional(),
     });
-    validate(known, body);
-    for (const [k, v] of Object.entries(body)) {
+    const clean = validate(known.strict(), body);
+    for (const [k, v] of Object.entries(clean)) {
+      if (v === undefined) continue;
       run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", k, JSON.stringify(v));
     }
-    logActivity(req.user!.id, "update", "settings", null, `Updated settings: ${Object.keys(body).join(", ")}`);
+    logActivity(req.user!.id, "update", "settings", null, `Updated settings: ${Object.keys(clean).join(", ")}`);
     const rows = all<{ key: string; value: string }>("SELECT * FROM settings");
     const merged: Record<string, unknown> = { ...DEFAULTS };
     for (const r of rows) merged[r.key] = JSON.parse(r.value);

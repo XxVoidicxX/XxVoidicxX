@@ -1,5 +1,5 @@
-import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes, useEffect, useRef } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import clsx from "clsx";
 import { X, Loader2, Inbox, ChevronLeft, ChevronRight, type LucideIcon } from "lucide-react";
 import type { Tone } from "@/lib/format";
@@ -121,21 +121,33 @@ export function Avatar({ name, size = "md", className }: { name: string | null |
 
 /* ---------- Modal / Drawer ---------- */
 export function Modal({ open, onClose, title, description, children, footer, size = "md" }: { open: boolean; onClose: () => void; title: ReactNode; description?: ReactNode; children: ReactNode; footer?: ReactNode; size?: "sm" | "md" | "lg" | "xl" }) {
+  const panelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const previous = document.activeElement as HTMLElement | null;
+    const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])') ?? []).filter((el) => el.offsetParent !== null);
+    const t = setTimeout(() => { const f = focusable(); (f.find((el) => !el.hasAttribute("aria-label") || el.getAttribute("aria-label") !== "Close") ?? f[0] ?? panelRef.current)?.focus(); }, 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { e.stopPropagation(); onClose(); return; }
+      if (e.key !== "Tab") return;
+      const f = focusable();
+      if (!f.length) return;
+      const first = f[0], last = f[f.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    return () => { document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; };
+    return () => { clearTimeout(t); document.removeEventListener("keydown", onKey); document.body.style.overflow = ""; previous?.focus?.(); };
   }, [open, onClose]);
   if (!open) return null;
   const w = { sm: "max-w-md", md: "max-w-lg", lg: "max-w-2xl", xl: "max-w-4xl" }[size];
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-900/40 p-4 sm:p-8 backdrop-blur-[1px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true">
-      <div className={cn("w-full bg-white rounded-xl shadow-pop border border-ink-200 animate-fade-in my-auto", w)}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink-900/40 p-4 sm:p-8 backdrop-blur-[1px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="meridian-modal-title" tabIndex={-1} className={cn("w-full bg-white rounded-xl shadow-pop border border-ink-200 animate-fade-in my-auto outline-none", w)}>
         <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3">
           <div>
-            <h2 className="text-base font-semibold text-ink-900">{title}</h2>
+            <h2 id="meridian-modal-title" className="text-base font-semibold text-ink-900">{title}</h2>
             {description && <p className="text-sm text-ink-500 mt-0.5">{description}</p>}
           </div>
           <button onClick={onClose} className="text-ink-400 hover:text-ink-700 rounded-md p-1 focus-ring" aria-label="Close"><X className="h-5 w-5" /></button>
@@ -193,7 +205,12 @@ export function PageLoader() {
 }
 
 /* ---------- Page header ---------- */
-export function PageHeader({ title, description, actions, breadcrumbs, meta }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: { label: string; to?: string }[]; meta?: ReactNode }) {
+export function PageHeader({ title, description, actions, breadcrumbs, meta, documentTitle }: { title: ReactNode; description?: ReactNode; actions?: ReactNode; breadcrumbs?: { label: string; to?: string }[]; meta?: ReactNode; documentTitle?: string }) {
+  useEffect(() => {
+    const t = documentTitle ?? (typeof title === "string" ? title : breadcrumbs?.[breadcrumbs.length - 1]?.label);
+    if (t) document.title = `${t} · Meridian`;
+    return () => { document.title = "Meridian — Third-Party Risk Management"; };
+  }, [title, documentTitle, breadcrumbs]);
   return (
     <div className="mb-6">
       {breadcrumbs && (
@@ -232,17 +249,19 @@ export function DataTable<T extends { id: number | string }>({ columns, rows, lo
   columns: Column<T>[]; rows: T[]; loading?: boolean; sort?: { key: string; dir: "asc" | "desc" }; onSort?: (key: string) => void; onRowClick?: (row: T) => void; emptyTitle?: ReactNode; emptyDescription?: ReactNode; rowHref?: (row: T) => string; dense?: boolean;
 }) {
   const alignCls = (a?: string) => (a === "right" ? "text-right" : a === "center" ? "text-center" : "text-left");
+  const navigate = useNavigate();
+  const activate = (r: T) => { if (onRowClick) onRowClick(r); else if (rowHref) navigate(rowHref(r)); };
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto relative">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-ink-200 bg-ink-50/70">
             {columns.map((c) => (
-              <th key={c.key} style={{ width: c.width }} className={cn("px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-500 whitespace-nowrap", alignCls(c.align), c.className)}>
+              <th key={c.key} scope="col" style={{ width: c.width }} aria-sort={c.sortable && sort?.key === c.key ? (sort.dir === "asc" ? "ascending" : "descending") : undefined} className={cn("px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-500 whitespace-nowrap", alignCls(c.align), c.className)}>
                 {c.sortable && onSort ? (
                   <button onClick={() => onSort(c.key)} className={cn("inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink-800 focus-ring rounded", sort?.key === c.key && "text-brand-700")}>
                     {c.header}
-                    <span className="text-[10px]">{sort?.key === c.key ? (sort.dir === "asc" ? "▲" : "▼") : <span className="text-ink-300">↕</span>}</span>
+                    <span className="text-[10px]" aria-hidden="true">{sort?.key === c.key ? (sort.dir === "asc" ? "▲" : "▼") : <span className="text-ink-500">↕</span>}</span>
                   </button>
                 ) : c.header}
               </th>
@@ -257,10 +276,10 @@ export function DataTable<T extends { id: number | string }>({ columns, rows, lo
             : rows.length === 0
             ? <tr><td colSpan={columns.length}><EmptyState title={emptyTitle} description={emptyDescription} className="py-10" /></td></tr>
             : rows.map((r) => (
-                <tr key={r.id} onClick={onRowClick ? () => onRowClick(r) : undefined} className={cn("bg-white transition-colors", (onRowClick || rowHref) && "hover:bg-brand-50/40 cursor-pointer")}>
-                  {columns.map((c) => (
+                <tr key={r.id} onClick={onRowClick || rowHref ? (e) => { if ((e.target as HTMLElement).closest("a,button,input,select,textarea,[role=menu]")) return; activate(r); } : undefined} className={cn("bg-white transition-colors", (onRowClick || rowHref) && "hover:bg-brand-50/40 cursor-pointer")}>
+                  {columns.map((c, ci) => (
                     <td key={c.key} className={cn("px-4 align-middle", dense ? "py-2" : "py-3", alignCls(c.align), c.className)}>
-                      {rowHref ? <Link to={rowHref(r)} className="block -mx-4 px-4 -my-3 py-3" onClick={(e) => e.stopPropagation()}>{c.render(r)}</Link> : c.render(r)}
+                      {rowHref && ci === 0 ? <Link to={rowHref(r)} className="block -mx-4 px-4 -my-3 py-3 focus-ring rounded">{c.render(r)}</Link> : c.render(r)}
                     </td>
                   ))}
                 </tr>

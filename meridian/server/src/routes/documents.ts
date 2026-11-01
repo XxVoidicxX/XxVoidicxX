@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update, run } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
-import { HttpError, notFound, orderBy, paginate, validate, wrap } from "../http.js";
+import { HttpError, notFound, orderBy, paginate, validate, wrap, shortText, longText, optDate, dateOrder } from "../http.js";
 import { logActivity } from "../activity.js";
 
 export const documentsRouter = Router();
@@ -66,10 +66,11 @@ documentsRouter.post(
   canWrite,
   wrap((req, res) => {
     const body = validate(
-      z.object({ vendor_id: z.number().int(), contract_id: z.number().int().nullable().optional(), name: z.string().min(1), type: typeEnum, status: statusEnum.optional(), issued_date: z.string().nullable().optional(), expiry_date: z.string().nullable().optional(), file_name: z.string().nullable().optional(), file_size: z.number().int().min(0).optional(), notes: z.string().nullable().optional() }),
+      z.object({ vendor_id: z.number().int(), contract_id: z.number().int().nullable().optional(), name: shortText(200), type: typeEnum, status: statusEnum.optional(), issued_date: optDate, expiry_date: optDate, file_name: z.string().trim().max(255).nullable().optional(), file_size: z.number().int().min(0).max(5e9).optional(), notes: longText(2000) }),
       req.body
     );
     if (!get("SELECT id FROM vendors WHERE id = ?", body.vendor_id)) throw new HttpError(400, "Vendor does not exist");
+    dateOrder(body.issued_date, body.expiry_date, "Expiry date must be on or after issue date");
     const id = insert("documents", { ...body, status: body.status ?? "pending_review", uploaded_by: req.user!.id });
     refreshDocumentStatuses();
     logActivity(req.user!.id, "create", "document", id, `Uploaded ${body.name}`);
@@ -84,7 +85,8 @@ documentsRouter.patch(
     const id = Number(req.params.id);
     const existing = get<any>("SELECT * FROM documents WHERE id = ?", id);
     if (!existing) throw notFound("Document");
-    const body = validate(z.object({ name: z.string().min(1).optional(), type: typeEnum.optional(), status: statusEnum.optional(), issued_date: z.string().nullable().optional(), expiry_date: z.string().nullable().optional(), notes: z.string().nullable().optional(), contract_id: z.number().int().nullable().optional() }), req.body);
+    const body = validate(z.object({ name: shortText(200).optional(), type: typeEnum.optional(), status: statusEnum.optional(), issued_date: optDate, expiry_date: optDate, notes: longText(2000), contract_id: z.number().int().nullable().optional() }), req.body);
+    dateOrder(body.issued_date ?? existing.issued_date, body.expiry_date ?? existing.expiry_date, "Expiry date must be on or after issue date");
     update("documents", id, body);
     if (body.status && body.status !== existing.status) logActivity(req.user!.id, "status_change", "document", id, `${existing.name} marked ${body.status}`);
     else logActivity(req.user!.id, "update", "document", id, `Updated ${existing.name}`, body);
