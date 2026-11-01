@@ -126,7 +126,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 transition-opacity", fetching && "opacity-70")}>
+      <div className={cn("grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6 gap-4 transition-opacity [&>*]:min-w-0", fetching && "opacity-70")}>
         {loading || !k ? (
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-[var(--radius-card)]" />)
         ) : (
@@ -141,19 +141,19 @@ export default function DashboardPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 [&>*]:min-w-0">
         <RiskPosture data={d} fetching={fetching} />
         <FindingsBySeverity data={d} fetching={fetching} />
         <SpendByCategory data={d} fetching={fetching} />
         <AssessmentTrend data={d} fetching={fetching} />
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-4 [&>*]:min-w-0">
         <MyWork data={d} className="xl:col-span-7" userId={user?.id} />
         <TopRiskVendors data={d} className="xl:col-span-5" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 [&>*]:min-w-0">
         <UpcomingRenewals data={d} />
         <ExpiringEvidence data={d} />
         <RecentActivity data={d} className="lg:col-span-2 xl:col-span-1" />
@@ -185,17 +185,17 @@ function RiskPosture({ data, fetching }: { data?: DashboardData; fetching: boole
       />
       <ChartLegend className="mt-3" items={rows.map((r) => ({ key: r.tier, label: LABELS.tier[r.tier], color: TIER_COLORS[r.tier] }))} />
       <div className="mt-4 -mx-1">
-        <div className="grid grid-cols-[1fr_64px_120px_84px] gap-3 px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500 border-b border-ink-100">
-          <span>Tier</span><span className="text-right">Vendors</span><span>Avg residual</span><span className="text-right">Spend</span>
+        <div className="grid grid-cols-[minmax(0,1fr)_64px_72px] sm:grid-cols-[1fr_64px_120px_84px] gap-2 sm:gap-3 px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-500 border-b border-ink-100">
+          <span>Tier</span><span className="text-right">Vendors</span><span className="hidden sm:block">Avg residual</span><span className="text-right">Spend</span>
         </div>
         <ul className="divide-y divide-ink-100">
           {rows.map((r) => (
             <li key={r.tier}>
-              <Link to={`/vendors?tier=${r.tier}`} className="grid grid-cols-[1fr_64px_120px_84px] gap-3 items-center px-1 py-2 rounded hover:bg-ink-50 focus-ring">
-                <span className="inline-flex items-center gap-2 text-sm text-ink-800 font-medium"><span className="h-2 w-2 rounded-full" style={{ background: TIER_COLORS[r.tier] }} />{LABELS.tier[r.tier]}</span>
+              <Link to={`/vendors?tier=${r.tier}`} className="grid grid-cols-[minmax(0,1fr)_64px_72px] sm:grid-cols-[1fr_64px_120px_84px] gap-2 sm:gap-3 items-center px-1 py-2 rounded hover:bg-ink-50 focus-ring">
+                <span className="inline-flex min-w-0 items-center gap-2 text-sm text-ink-800 font-medium"><span className="h-2 w-2 rounded-full" style={{ background: TIER_COLORS[r.tier] }} />{LABELS.tier[r.tier]}</span>
                 <span className="text-right text-sm tnum text-ink-900 font-semibold">{r.count}<span className="ml-1.5 text-xs font-normal text-ink-500">{total ? Math.round((r.count / total) * 100) : 0}%</span></span>
-                <RiskScore value={r.avg} size="sm" />
-                <span className="text-right text-sm tnum text-ink-600">{fmtMoney(r.spend, "USD", true)}</span>
+                <span className="hidden sm:block"><RiskScore value={r.avg} size="sm" /></span>
+                <span className="text-right text-sm tnum text-ink-600 truncate">{fmtMoney(r.spend, "USD", true)}</span>
               </Link>
             </li>
           ))}

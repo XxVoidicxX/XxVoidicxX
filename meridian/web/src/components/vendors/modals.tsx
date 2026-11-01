@@ -9,6 +9,7 @@ import { useUsers } from "@/lib/hooks";
 import { LABELS, TONES, fmtBytes } from "@/lib/format";
 import type { AssessmentTemplate, DataAccess, Severity, Tier, User, VendorDetail, VendorStatus } from "@/lib/types";
 import { DataAccessPicker, RiskPreview } from "./parts";
+import { DOCUMENT_ACCEPT, fileTypeError } from "@/components/documents/DocumentModals";
 import { EMAIL_RE, URL_RE, addMonthsIso, computeInherentRisk, errorMessage, normalizeUrl, tierFromInherent, todayIso, useReviewCadence } from "./risk";
 
 type Errors = Record<string, string>;
@@ -241,6 +242,8 @@ export function UploadDocumentModal({ vendor, open, onClose }: { vendor: VendorD
   const pick = (fl: FileList | null) => {
     const x = fl?.[0];
     if (!x) return;
+    const typeErr = fileTypeError(x.name);
+    if (typeErr) { setFile(null); setErrors((e) => ({ ...e, file: typeErr })); return; }
     setFile({ name: x.name, size: x.size });
     if (!name) setName(x.name.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " "));
     setErrors((e) => ({ ...e, file: "" }));
@@ -275,7 +278,7 @@ export function UploadDocumentModal({ vendor, open, onClose }: { vendor: VendorD
       footer={<><Button variant="secondary" onClick={onClose} disabled={create.isPending}>Cancel</Button><Button icon={FileUp} onClick={submit} loading={create.isPending}>Upload</Button></>}>
       <div className="space-y-4">
         <div>
-          <input ref={fileRef} type="file" className="sr-only" onChange={(e) => pick(e.target.files)} aria-label="Choose file" />
+          <input ref={fileRef} type="file" accept={DOCUMENT_ACCEPT} className="sr-only" onChange={(e) => { pick(e.target.files); e.target.value = ""; }} aria-label="Choose file" />
           {file ? (
             <div className="flex items-center gap-3 rounded-lg border border-ink-200 bg-ink-50/60 px-3.5 py-3">
               <span className="h-9 w-9 rounded-md bg-brand-50 text-brand-600 flex items-center justify-center shrink-0"><Paperclip className="h-4 w-4" /></span>
@@ -296,10 +299,10 @@ export function UploadDocumentModal({ vendor, open, onClose }: { vendor: VendorD
             >
               <FileUp className="h-6 w-6 text-ink-400 mx-auto" />
               <p className="text-sm font-medium text-ink-800 mt-2">Drop a file here or <span className="text-brand-700">browse</span></p>
-              <p className="text-xs text-ink-500 mt-0.5">PDF, DOCX, XLSX or images. Files are recorded for tracking only.</p>
+              <p className="text-xs text-ink-500 mt-0.5">PDF, Office, image or ZIP. Files are recorded for tracking only.</p>
             </button>
           )}
-          {errors.file && <p className="text-xs text-danger-600 mt-1">{errors.file}</p>}
+          {errors.file && <p role="alert" className="text-xs text-danger-600 mt-1">{errors.file}</p>}
         </div>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Document name" required error={errors.name} className="sm:col-span-2">

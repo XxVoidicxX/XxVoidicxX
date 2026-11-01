@@ -3,16 +3,19 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Activity as ActivityIcon, AlertTriangle, ArrowRight, CalendarClock, CheckCircle2, ClipboardList, ExternalLink, FileText, FileUp, Flag, Gauge, Globe,
-  Mail, MapPin, Pencil, Phone, Plus, RefreshCcw, Send, ShieldCheck, Star, Tag, Trash2, TrendingDown, UserRound, Users, FileSignature, Building2, Clock,
+  Mail, MapPin, MoreHorizontal, Pencil, Phone, Plus, RefreshCcw, Send, ShieldCheck, Star, Tag, Trash2, TrendingDown, UserRound, Users, FileSignature, Building2, Clock,
 } from "lucide-react";
 import { Avatar, Badge, Button, Card, DataTable, DescriptionList, EmptyState, PageHeader, PageLoader, RiskScore, Tabs, cn, type Column } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { DropdownMenu, Kpi, TierBadge, VendorMark } from "@/components/vendors/parts";
 import { AddContactModal, ConfirmModal, EditVendorModal, RaiseFindingModal, STATUS_FLOW, StartAssessmentModal, UploadDocumentModal } from "@/components/vendors/modals";
 import { ASSESSMENT_REDUCTION, FINDING_PENALTY, errorMessage, inherentBreakdown, residualBreakdown } from "@/components/vendors/risk";
+import { HeaderActions, useInFlight } from "@/components/contracts/shared";
+import { PendingExpiryHint } from "@/components/documents/DocumentModals";
 import { ApiError, api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { LABELS, TONES, daysUntil, fmtBytes, fmtDate, fmtDateTime, fmtMoney, fmtRelative, riskTone, titleCase } from "@/lib/format";
+import { LABELS, TONES, daysUntil, fmtBytes, fmtDate, fmtDateTime, fmtMoney, fmtRelative, riskTone, titleCase, type Tone } from "@/lib/format";
+import { humanizeValue, statusTones } from "@/components/approvals/rules";
 import type { Activity, Approval, Assessment, Contract, Document, Finding, VendorContact, VendorDetail, VendorStatus } from "@/lib/types";
 
 type TabId = "overview" | "contracts" | "assessments" | "documents" | "findings" | "approvals" | "activity";
@@ -25,7 +28,9 @@ export default function VendorDetailPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { canWrite } = useAuth();
+  const { canWrite, can } = useAuth();
+  const isAdmin = can("admin");
+  const guard = useInFlight();
   const [sp, setSp] = useSearchParams();
   const tabParam = sp.get("tab") as TabId | null;
   const tab: TabId = tabParam && TAB_IDS.includes(tabParam) ? tabParam : "overview";
@@ -46,8 +51,9 @@ export default function VendorDetailPage() {
 
   const statusMut = useMutation({
     mutationFn: (status: VendorStatus) => api.patch(`/api/vendors/${id}`, { status }),
-    onSuccess: (_r, status) => { invalidate(); toast("success", `Status changed to ${LABELS.vendorStatus[status]}`); setPendingStatus(null); },
-    onError: (e) => toast("error", "Could not change status", errorMessage(e)),
+    onSuccess: (_r, status) => { toast("success", `Status changed to ${LABELS.vendorStatus[status]}`); setPendingStatus(null); },
+    onError: (e) => { toast("error", "Could not change status", errorMessage(e)); setPendingStatus(null); },
+    onSettled: () => { invalidate(); qc.invalidateQueries({ queryKey: ["approvals"] }); qc.invalidateQueries({ queryKey: ["dashboard"] }); return q.refetch(); },
   });
   const submitMut = useMutation({
     mutationFn: () => api.post<{ approval_id: number }>(`/api/vendors/${id}/submit-onboarding`),
@@ -79,7 +85,7 @@ export default function VendorDetailPage() {
   if (!q.data) return <PageLoader />;
   const v = q.data;
 
-  const pendingOnboarding = v.approvals.find((a) => a.type === "vendor_onboarding" && a.status === "pending");
+  const pendingOnboarding = v.status === "prospect" || v.status === "onboarding" ? v.approvals.find((a) => a.type === "vendor_onboarding" && a.status === "pending") : undefined;
   const canSubmit = canWrite && (v.status === "prospect" || v.status === "onboarding") && !pendingOnboarding;
   const openFindings = v.findings.filter((f) => f.status === "open" || f.status === "in_remediation");
   const highFindings = openFindings.filter((f) => f.severity === "critical" || f.severity === "high").length;
@@ -91,8 +97,15 @@ export default function VendorDetailPage() {
 
   const requestStatus = (s: VendorStatus) => {
     if (s === "offboarding" || s === "terminated") setPendingStatus(s);
-    else statusMut.mutate(s);
+    else guard(() => statusMut.mutateAsync(s));
   };
+  const statusOptions = STATUS_FLOW.filter((s) => isAdmin || s.value === v.status || !((s.value === "active" && (v.status === "prospect" || v.status === "onboarding")) || s.value === "terminated"));
+  const statusHint = !isAdmin && (v.status === "prospect" || v.status === "onboarding") ? "Activation happens when the onboarding approval is granted" : null;
+  const moreItems = [
+    { key: "edit", label: "Edit vendor", icon: Pencil, onSelect: () => setModal("edit") },
+    { key: "doc", label: "Upload document", icon: FileUp, onSelect: () => setModal("doc") },
+    { key: "finding", label: "Raise finding", icon: Flag, onSelect: () => setModal("finding") },
+  ];
 
   const tabs: { id: TabId; label: string; count?: number }[] = [
     { id: "overview", label: "Overview" },
@@ -107,33 +120,46 @@ export default function VendorDetailPage() {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Vendors", to: "/vendors" }, { label: v.name }]}
-        title={<span className="inline-flex items-center gap-3"><VendorMark name={v.name} size="lg" /><span className="min-w-0"><span className="block truncate">{v.name}</span>{v.legal_name && v.legal_name !== v.name && <span className="block text-sm font-normal text-ink-500 tracking-normal mt-0.5">{v.legal_name}</span>}</span></span>}
+        breadcrumbs={[{ label: "Vendors", to: "/vendors" }, { label: v.name.length > 26 ? `${v.name.slice(0, 25)}…` : v.name }]}
+        documentTitle={v.name}
+        title={<span className="flex items-center gap-3 min-w-0"><VendorMark name={v.name} size="lg" /><span className="min-w-0"><span className="line-clamp-2 break-words [overflow-wrap:anywhere]" title={v.name}>{v.name}</span>{v.legal_name && v.legal_name !== v.name && <span className="text-sm font-normal text-ink-500 tracking-normal mt-0.5 line-clamp-2 break-words [overflow-wrap:anywhere]">{v.legal_name}</span>}</span></span>}
         meta={
           <>
             <Badge tone={TONES.vendorStatus[v.status]} dot>{LABELS.vendorStatus[v.status]}</Badge>
             <TierBadge tier={v.tier} />
             <MetaItem icon={Tag}>{v.category}</MetaItem>
             {v.country && <MetaItem icon={MapPin}>{v.country}</MetaItem>}
-            {v.website && <a href={v.website} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-brand-700 hover:underline"><Globe className="h-3.5 w-3.5" />{v.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}<ExternalLink className="h-3 w-3" /></a>}
+            {v.website && /^https?:\/\//i.test(v.website) && <a href={v.website} target="_blank" rel="noreferrer" className="inline-flex min-w-0 max-w-full items-center gap-1 text-sm text-brand-700 hover:underline [overflow-wrap:anywhere]"><Globe className="h-3.5 w-3.5" />{v.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}<ExternalLink className="h-3 w-3" /></a>}
             <MetaItem icon={UserRound}>{v.owner_name ? <span className="inline-flex items-center gap-1.5">Owner <span className="font-medium text-ink-800">{v.owner_name}</span></span> : "No owner"}</MetaItem>
           </>
         }
         actions={canWrite ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button variant="secondary" icon={Pencil} onClick={() => setModal("edit")}>Edit</Button>
-            <Button variant="secondary" icon={FileUp} onClick={() => setModal("doc")}>Upload document</Button>
-            <Button variant="secondary" icon={Flag} onClick={() => setModal("finding")}>Raise finding</Button>
+          <HeaderActions>
+            <span className="hidden xl:contents">
+              <Button variant="secondary" icon={Pencil} onClick={() => setModal("edit")}>Edit</Button>
+              <Button variant="secondary" icon={FileUp} onClick={() => setModal("doc")}>Upload document</Button>
+              <Button variant="secondary" icon={Flag} onClick={() => setModal("finding")}>Raise finding</Button>
+            </span>
             <DropdownMenu
               label="Status"
-              items={STATUS_FLOW.map((s) => ({
-                key: s.value, label: LABELS.vendorStatus[s.value], description: s.description, active: s.value === v.status, disabled: s.value === v.status || statusMut.isPending,
-                danger: s.value === "offboarding" || s.value === "terminated", onSelect: () => requestStatus(s.value),
-              }))}
+              items={[
+                ...statusOptions.map((s) => ({
+                  key: s.value, label: LABELS.vendorStatus[s.value], description: s.description, active: s.value === v.status, disabled: s.value === v.status || statusMut.isPending,
+                  danger: s.value === "offboarding" || s.value === "terminated", onSelect: () => requestStatus(s.value),
+                })),
+                ...(statusHint ? [{ key: "hint", label: <span className="text-xs font-normal text-ink-500">{statusHint}</span>, disabled: true, onSelect: () => undefined }] : []),
+              ]}
             />
-            {canSubmit && <Button variant="outline" icon={Send} onClick={() => setConfirmSubmit(true)}>Submit for onboarding</Button>}
-            <Button icon={ClipboardList} onClick={() => setModal("assess")}>Start assessment</Button>
-          </div>
+            {canSubmit && <span className="hidden sm:contents"><Button variant="outline" icon={Send} onClick={() => setConfirmSubmit(true)}>Submit for onboarding</Button></span>}
+            <span className="xl:hidden">
+              <DropdownMenu
+                label={<span className="sr-only sm:not-sr-only">More</span>}
+                icon={MoreHorizontal}
+                items={[...moreItems, ...(canSubmit ? [{ key: "submit", label: "Submit for onboarding", icon: Send, onSelect: () => setConfirmSubmit(true) }] : [])]}
+              />
+            </span>
+            <Button icon={ClipboardList} onClick={() => setModal("assess")} aria-label="Start assessment"><span className="hidden sm:inline">Start assessment</span></Button>
+          </HeaderActions>
         ) : <Badge tone="neutral">Read-only</Badge>}
       />
 
@@ -149,7 +175,7 @@ export default function VendorDetailPage() {
 
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         <Kpi label="Inherent risk" icon={Gauge} tone={riskTone(v.inherent_risk)} hint={`${LABELS.dataAccess[v.data_access]} data · ${fmtMoney(v.annual_spend, "USD", true)}`}>{v.inherent_risk}<span className="text-sm font-normal text-ink-400 ml-1">/ 100</span></Kpi>
-        <Kpi label="Residual risk" icon={TrendingDown} tone={riskTone(v.residual_risk)} hint={v.residual_risk < v.inherent_risk ? `${v.inherent_risk - v.residual_risk} below inherent` : v.residual_risk > v.inherent_risk ? `${v.residual_risk - v.inherent_risk} above inherent` : "No mitigation yet"}><RiskScore value={v.residual_risk} size="lg" /></Kpi>
+        <Kpi label="Residual risk" icon={TrendingDown} tone={riskTone(v.residual_risk)} hint={v.residual_risk < v.inherent_risk ? `${v.inherent_risk - v.residual_risk} below inherent` : v.residual_risk > v.inherent_risk ? `${v.residual_risk - v.inherent_risk} above inherent` : "No mitigation yet"}><span className="hidden sm:inline-flex"><RiskScore value={v.residual_risk} size="lg" /></span><span className="inline-flex sm:hidden"><RiskScore value={v.residual_risk} size="sm" /></span></Kpi>
         <Kpi label="Open findings" icon={Flag} tone={v.open_findings > 0 ? "danger" : "success"} hint={v.open_findings > 0 ? `${highFindings} critical or high` : "No open issues"}>{v.open_findings}</Kpi>
         <Kpi label="Active contracts" icon={FileSignature} tone="brand" hint={activeContracts.length ? `${fmtMoney(contractValue, "USD", true)} total value` : "No active agreements"}>{v.active_contracts}</Kpi>
         <Kpi label="Document alerts" icon={FileText} tone={v.document_alerts > 0 ? "warning" : "success"} hint={v.document_alerts > 0 ? `${docExpired} expired · ${v.document_alerts - docExpired} expiring` : "All documents current"}>{v.document_alerts}</Kpi>
@@ -177,7 +203,7 @@ export default function VendorDetailPage() {
       <ConfirmModal
         open={!!pendingStatus}
         onClose={() => setPendingStatus(null)}
-        onConfirm={() => pendingStatus && statusMut.mutate(pendingStatus)}
+        onConfirm={() => { const s = pendingStatus; if (s) guard(() => statusMut.mutateAsync(s)); }}
         loading={statusMut.isPending}
         danger
         title={pendingStatus === "terminated" ? `Terminate ${v.name}?` : `Begin offboarding ${v.name}?`}
@@ -196,7 +222,7 @@ export default function VendorDetailPage() {
       <ConfirmModal
         open={confirmSubmit}
         onClose={() => setConfirmSubmit(false)}
-        onConfirm={() => submitMut.mutate()}
+        onConfirm={() => guard(() => submitMut.mutateAsync())}
         loading={submitMut.isPending}
         title="Submit for onboarding approval?"
         confirmLabel="Submit for approval"
@@ -205,7 +231,7 @@ export default function VendorDetailPage() {
       <ConfirmModal
         open={!!removeContact}
         onClose={() => setRemoveContact(null)}
-        onConfirm={() => removeContact && removeContactMut.mutate(removeContact)}
+        onConfirm={() => { const c = removeContact; if (c) guard(() => removeContactMut.mutateAsync(c)); }}
         loading={removeContactMut.isPending}
         danger
         title="Remove contact?"
@@ -252,8 +278,8 @@ function OverviewTab({ v, canWrite, onAddContact, onRemoveContact, onAssess }: {
   const rb = residualBreakdown(v);
   const services = (v.services ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return (
-    <div className="grid gap-6 xl:grid-cols-3 items-start">
-      <div className="xl:col-span-2 space-y-6">
+    <div className="grid gap-6 xl:grid-cols-3 items-start [&>*]:min-w-0">
+      <div className="xl:col-span-2 space-y-6 min-w-0">
         <Card>
           <div className="flex items-start justify-between gap-4 mb-4">
             <h3 className="text-sm font-semibold text-ink-900">Vendor profile</h3>
@@ -263,8 +289,8 @@ function OverviewTab({ v, canWrite, onAddContact, onRemoveContact, onAssess }: {
             <div className="flex flex-wrap gap-1.5 mb-5">{services.map((s) => <Badge key={s} tone="neutral">{s}</Badge>)}</div>
           )}
           <DescriptionList cols={3} items={[
-            { label: "Vendor name", value: v.name },
-            { label: "Legal name", value: v.legal_name || "—" },
+            { label: "Vendor name", value: <span className="[overflow-wrap:anywhere]">{v.name}</span> },
+            { label: "Legal name", value: <span className="[overflow-wrap:anywhere]">{v.legal_name || "—"}</span> },
             { label: "Category", value: v.category },
             { label: "Status", value: <Badge tone={TONES.vendorStatus[v.status]} dot>{LABELS.vendorStatus[v.status]}</Badge> },
             { label: "Tier", value: <TierBadge tier={v.tier} /> },
@@ -283,9 +309,9 @@ function OverviewTab({ v, canWrite, onAddContact, onRemoveContact, onAssess }: {
 
         <Card padded={false}>
           <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-ink-200">
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-semibold text-ink-900">Contacts</h3>
-              <p className="text-sm text-ink-500 mt-0.5">People at {v.name}</p>
+              <p className="text-sm text-ink-500 mt-0.5 line-clamp-2 [overflow-wrap:anywhere]">People at {v.name}</p>
             </div>
             {canWrite && <Button size="sm" variant="secondary" icon={Plus} onClick={onAddContact}>Add contact</Button>}
           </div>
@@ -419,7 +445,7 @@ function DocumentsTab({ v, action }: { v: VendorDetail; action: ReactNode }) {
   const cols: Column<Document>[] = [
     { key: "name", header: "Document", render: (d) => <div className="flex items-center gap-3 min-w-[220px]"><span className="h-8 w-8 rounded-md bg-ink-100 text-ink-500 flex items-center justify-center shrink-0"><FileText className="h-4 w-4" /></span><div className="min-w-0"><p className="font-medium text-ink-900 truncate">{d.name}</p><p className="text-xs text-ink-500 truncate">{d.file_name ? `${d.file_name}${d.file_size ? ` · ${fmtBytes(d.file_size)}` : ""}` : "No file"}</p></div></div> },
     { key: "type", header: "Type", render: (d) => <span className="text-ink-700 whitespace-nowrap">{LABELS.documentType[d.type]}</span> },
-    { key: "status", header: "Status", render: (d) => <Badge tone={TONES.documentStatus[d.status]} dot>{LABELS.documentStatus[d.status]}</Badge> },
+    { key: "status", header: "Status", render: (d) => <div><Badge tone={TONES.documentStatus[d.status]} dot>{LABELS.documentStatus[d.status]}</Badge><PendingExpiryHint doc={d} /></div> },
     { key: "issued", header: "Issued", render: (d) => <span className="text-ink-600 whitespace-nowrap">{fmtDate(d.issued_date)}</span> },
     { key: "expiry", header: "Expiry", render: (d) => <DueCell date={d.expiry_date} done={d.status === "rejected"} /> },
     { key: "uploaded", header: "Uploaded by", render: (d) => d.uploaded_by_name ? <span className="inline-flex items-center gap-2 whitespace-nowrap"><Avatar name={d.uploaded_by_name} size="xs" /><span><span className="block">{d.uploaded_by_name}</span><span className="block text-xs text-ink-400">{fmtDate(d.created_at)}</span></span></span> : <span className="text-ink-400">—</span> },
@@ -437,13 +463,19 @@ function FindingsTab({ v, action }: { v: VendorDetail; action: ReactNode }) {
     { key: "severity", header: "Severity", render: (f) => <Badge tone={TONES.tier[f.severity]}>{LABELS.tier[f.severity]}</Badge> },
     { key: "status", header: "Status", render: (f) => <Badge tone={TONES.findingStatus[f.status]} dot>{LABELS.findingStatus[f.status]}</Badge> },
     { key: "owner", header: "Owner", render: (f) => f.owner_name ? <span className="inline-flex items-center gap-2 whitespace-nowrap"><Avatar name={f.owner_name} size="xs" />{f.owner_name}</span> : <span className="text-ink-400">Unassigned</span> },
-    { key: "due", header: "Due", render: (f) => <DueCell date={f.due_date} done={f.status === "closed" || f.status === "risk_accepted"} /> },
+    { key: "due", header: "Due / outcome", render: (f) => <FindingOutcome f={f} /> },
   ];
   return (
     <TabCard title="Findings" description="Control gaps and issues; open findings add a penalty to residual risk." action={action}>
       <DataTable columns={cols} rows={v.findings} rowHref={(f) => `/findings/${f.id}`} emptyTitle="No findings" emptyDescription="No issues have been raised for this vendor." />
     </TabCard>
   );
+}
+
+function FindingOutcome({ f }: { f: Finding }) {
+  if (f.status === "closed") return <span className="whitespace-nowrap"><span className="block text-success-700 font-medium">Resolved</span><span className="block text-xs text-ink-500">{f.resolved_at ? fmtDate(f.resolved_at) : "—"}</span></span>;
+  if (f.status === "risk_accepted") return <span className="whitespace-nowrap"><span className="block text-sky-700 font-medium">Risk accepted</span><span className="block text-xs text-ink-500">{f.resolved_at ? fmtDate(f.resolved_at) : "—"}</span></span>;
+  return <DueCell date={f.due_date} />;
 }
 
 function ApprovalsTab({ v, action }: { v: VendorDetail; action: ReactNode }) {
@@ -482,6 +514,20 @@ function ApprovalsTab({ v, action }: { v: VendorDetail; action: ReactNode }) {
   );
 }
 
+function statusTransition(a: Activity): { from: string; to: string; fromTone: Tone; toTone: Tone } | null {
+  if (!a.metadata) return null;
+  try {
+    const m = JSON.parse(a.metadata) as { from?: unknown; to?: unknown };
+    if (typeof m.from !== "string" || typeof m.to !== "string") return null;
+    const lbl = humanizeValue("status", m.from, a.entity_type);
+    const lbl2 = humanizeValue("status", m.to, a.entity_type);
+    const tones = statusTones(a.entity_type);
+    return { from: lbl, to: lbl2, fromTone: tones[m.from] ?? "neutral", toTone: tones[m.to] ?? "neutral" };
+  } catch {
+    return null;
+  }
+}
+
 const ENTITY_ICON: Record<string, typeof Tag> = { vendor: Building2, contract: FileSignature, assessment: ClipboardList, finding: Flag, document: FileText };
 const ENTITY_LINK: Record<string, string> = { contract: "/contracts/", assessment: "/assessments/", finding: "/findings/" };
 
@@ -495,6 +541,7 @@ function ActivityTab({ items }: { items: Activity[] }) {
           {items.map((a, i) => {
             const Icon = ENTITY_ICON[a.entity_type] ?? ActivityIcon;
             const href = a.entity_id != null && ENTITY_LINK[a.entity_type] ? `${ENTITY_LINK[a.entity_type]}${a.entity_id}` : null;
+            const transition = statusTransition(a);
             return (
               <li key={a.id} className="relative flex gap-3 pb-5 last:pb-0">
                 {i < items.length - 1 && <span className="absolute left-4 top-9 bottom-0 w-px bg-ink-200" aria-hidden />}
@@ -505,8 +552,15 @@ function ActivityTab({ items }: { items: Activity[] }) {
                 <div className="min-w-0 flex-1 pt-0.5">
                   <p className="text-sm text-ink-800">
                     <span className="font-medium text-ink-900">{a.actor_name ?? "System"}</span>{" "}
-                    {href ? <Link to={href} className="hover:text-brand-700 hover:underline">{a.summary}</Link> : a.summary}
+                    {href ? <Link to={href} className="hover:text-brand-700 hover:underline break-words">{a.summary}</Link> : <span className="break-words">{a.summary}</span>}
                   </p>
+                  {transition && (
+                    <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
+                      <Badge size="xs" tone={transition.fromTone}>{transition.from}</Badge>
+                      <ArrowRight className="h-3 w-3 text-ink-400" aria-label="to" />
+                      <Badge size="xs" tone={transition.toTone}>{transition.to}</Badge>
+                    </p>
+                  )}
                   <p className="text-xs text-ink-500 mt-0.5 flex items-center gap-1.5">
                     <span title={fmtDateTime(a.created_at)}>{fmtRelative(a.created_at)}</span>
                     <span className="text-ink-300">·</span>

@@ -29,7 +29,7 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         description="Configure Meridian for your organization."
-        meta={!can("admin") ? <Badge tone="neutral"><Lock className="h-3 w-3" />Signed in as {LABELS.role[user?.role ?? ""]} · some settings are read-only</Badge> : undefined}
+        meta={!can("admin") ? <Badge tone="neutral"><Lock className="h-3 w-3" />Signed in as {LABELS.role[user?.role ?? ""]}<span className="hidden sm:inline"> · some settings are read-only</span></Badge> : undefined}
       />
       <div className="grid grid-cols-1 md:grid-cols-[15rem_minmax(0,1fr)] gap-6 items-start">
         <nav className="md:sticky md:top-20 flex md:flex-col gap-1 overflow-x-auto" aria-label="Settings sections">

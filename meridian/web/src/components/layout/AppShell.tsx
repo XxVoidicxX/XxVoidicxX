@@ -109,7 +109,7 @@ export function AppShell() {
       <div className="flex-1 lg:pl-60 print:pl-0 flex flex-col min-w-0">
         <header className="print:hidden sticky top-0 z-20 h-16 bg-white/95 backdrop-blur border-b border-ink-200 flex items-center gap-3 px-4 sm:px-6">
           <button className="lg:hidden text-ink-600 p-1 rounded-md hover:bg-ink-100" onClick={() => setMobileOpen(true)} aria-label="Open menu"><Menu className="h-5 w-5" /></button>
-          <button onClick={() => setPaletteOpen(true)} className="flex-1 max-w-xl flex items-center gap-2 h-9 rounded-md border border-ink-200 bg-ink-50 px-3 text-sm text-ink-500 hover:border-ink-300 hover:bg-white transition-colors focus-ring">
+          <button onClick={() => setPaletteOpen(true)} className="flex-1 min-w-0 max-w-xl flex items-center gap-2 h-9 rounded-md border border-ink-200 bg-ink-50 px-3 text-sm text-ink-500 hover:border-ink-300 hover:bg-white transition-colors focus-ring">
             <Search className="h-4 w-4" />
             <span className="flex-1 text-left truncate">Search vendors, contracts, findings…</span>
             <kbd className="hidden sm:inline-flex items-center gap-0.5 rounded border border-ink-200 bg-white px-1.5 text-[11px] text-ink-500 font-medium"><Command className="h-3 w-3" />K</kbd>

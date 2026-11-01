@@ -119,7 +119,7 @@ export function OrganizationSettings() {
                 { label: "Medium", range: `${th.medium}–${th.low - 1}%`, w: th.low - th.medium, bar: "bg-sky-500" },
                 { label: "Low", range: `≥ ${th.low}%`, w: 100 - th.low, bar: "bg-success-600" },
               ].map((band, i) => (
-                <div key={band.label} className="min-w-[4.5rem]" style={{ flexGrow: Math.max(band.w, 1), flexBasis: 0 }}>
+                <div key={band.label} className="min-w-[3rem] sm:min-w-[4.5rem]" style={{ flexGrow: Math.max(band.w, 1), flexBasis: 0 }}>
                   <div className={cn("h-2.5", band.bar, i === 0 && "rounded-l-full", i === 3 && "rounded-r-full")} />
                   <p className="text-[11px] mt-1.5 leading-tight"><span className="font-medium text-ink-700">{band.label}</span> <span className="text-ink-500 tnum">{band.range}</span></p>
                 </div>

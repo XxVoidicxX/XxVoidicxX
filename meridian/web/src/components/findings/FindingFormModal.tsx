@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
 import { useUsers } from "@/lib/hooks";
 import { LABELS } from "@/lib/format";
 import type { Finding, Severity } from "@/lib/types";
@@ -16,11 +15,16 @@ const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 const SEV_DOT: Record<Severity, string> = { critical: "bg-danger-600", high: "bg-warning-600", medium: "bg-sky-500", low: "bg-success-600" };
 const SEV_ACTIVE: Record<Severity, string> = { critical: "border-danger-600 bg-danger-50 text-danger-700 ring-2 ring-danger-600/15", high: "border-warning-600 bg-warning-50 text-warning-700 ring-2 ring-warning-600/15", medium: "border-sky-500 bg-sky-50 text-sky-700 ring-2 ring-sky-500/15", low: "border-success-600 bg-success-50 text-success-700 ring-2 ring-success-600/15" };
 
+function isoLocal(d: Date) {
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
 function addDays(days: number) {
   const d = new Date();
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  return isoLocal(d);
 }
+const todayIso = () => isoLocal(new Date());
 
 export interface FindingFormInitial {
   vendor_id?: number | null;
@@ -35,7 +39,6 @@ export interface FindingFormInitial {
 
 export function FindingFormModal({ open, onClose, finding, initial, lockVendor, onSaved }: { open: boolean; onClose: () => void; finding?: Finding | null; initial?: FindingFormInitial; lockVendor?: boolean; onSaved?: (f: Finding) => void }) {
   const editing = !!finding;
-  const { user } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
   const users = useWritableUsers(useUsers().data);
@@ -47,6 +50,8 @@ export function FindingFormModal({ open, onClose, finding, initial, lockVendor, 
   const [dueDate, setDueDate] = useState("");
   const [dueTouched, setDueTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+  const inFlight = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -56,18 +61,21 @@ export function FindingFormModal({ open, onClose, finding, initial, lockVendor, 
     setTitle(src.title ?? "");
     setDescription(src.description ?? "");
     setSeverity(sev);
-    setOwnerId(src.owner_id ? String(src.owner_id) : editing ? "" : user ? String(user.id) : "");
-    setDueDate(src.due_date ?? (editing ? "" : addDays(SEVERITY_SLA_DAYS[sev])));
-    setDueTouched(editing || !!src.due_date);
+    setOwnerId(src.owner_id ? String(src.owner_id) : "");
+    const srcDue = src.due_date ?? null;
+    const usableDue = srcDue && (editing || srcDue >= todayIso()) ? srcDue : null;
+    setDueDate(usableDue ?? (editing ? "" : addDays(SEVERITY_SLA_DAYS[sev])));
+    setDueTouched(editing || !!usableDue);
     setSubmitted(false);
-  }, [open, finding, initial, editing, user]);
+    setServerError(null);
+  }, [open, finding, initial, editing]);
 
   const mutation = useMutation({
     mutationFn: () => {
-      const payload = { title: title.trim(), description: description.trim() || null, severity, owner_id: ownerId ? Number(ownerId) : null, due_date: dueDate || null };
+      const base = { title: title.trim(), description: description.trim() || null, severity, due_date: dueDate || null };
       return editing
-        ? api.patch<{ data: Finding }>(`/api/findings/${finding!.id}`, payload)
-        : api.post<{ data: Finding }>("/api/findings", { ...payload, vendor_id: vendorId, assessment_id: initial?.assessment_id ?? null });
+        ? api.patch<{ data: Finding }>(`/api/findings/${finding!.id}`, { ...base, owner_id: ownerId ? Number(ownerId) : null })
+        : api.post<{ data: Finding }>("/api/findings", { ...base, ...(ownerId ? { owner_id: Number(ownerId) } : {}), vendor_id: vendorId, assessment_id: initial?.assessment_id ?? null });
     },
     onSuccess: (r) => {
       qc.invalidateQueries({ queryKey: ["findings"] });
@@ -78,14 +86,21 @@ export function FindingFormModal({ open, onClose, finding, initial, lockVendor, 
       onClose();
       onSaved?.(r.data);
     },
-    onError: (e: Error) => toast("error", editing ? "Could not update finding" : "Could not raise finding", e.message),
+    onError: (e: Error) => { setServerError(e.message); toast("error", editing ? "Could not update finding" : "Could not raise finding", e.message); },
   });
 
-  const errors = { vendor: !editing && !vendorId ? "Select a vendor" : null, title: !title.trim() ? "Title is required" : null };
+  const dueChanged = !editing || dueDate !== (finding?.due_date ?? "");
+  const errors = {
+    vendor: !editing && !vendorId ? "Select a vendor" : null,
+    title: !title.trim() ? "Title is required" : null,
+    due: dueDate && dueChanged && dueDate < todayIso() ? "Due date cannot be in the past" : null,
+  };
   const save = () => {
     setSubmitted(true);
-    if (errors.vendor || errors.title) return;
-    mutation.mutate();
+    setServerError(null);
+    if (errors.vendor || errors.title || errors.due || inFlight.current) return;
+    inFlight.current = true;
+    mutation.mutate(undefined, { onSettled: () => { inFlight.current = false; } });
   };
   const pickSeverity = (s: Severity) => {
     setSeverity(s);
@@ -99,7 +114,7 @@ export function FindingFormModal({ open, onClose, finding, initial, lockVendor, 
       size="lg"
       title={editing ? "Edit finding" : "Raise finding"}
       description={editing ? "Update the details of this finding." : "Record a control gap or issue that needs remediation by the vendor."}
-      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={mutation.isPending}>{editing ? "Save changes" : "Raise finding"}</Button></>}
+      footer={<><Button variant="secondary" onClick={onClose}>Cancel</Button><Button onClick={save} loading={mutation.isPending} disabled={mutation.isPending}>{editing ? "Save changes" : "Raise finding"}</Button></>}
     >
       <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save(); }}>
         {initial?.assessment_title && !editing && (
@@ -136,10 +151,11 @@ export function FindingFormModal({ open, onClose, finding, initial, lockVendor, 
               {users.map((u) => <option key={u.id} value={u.id}>{u.name} · {LABELS.role[u.role]}</option>)}
             </Select>
           </Field>
-          <Field label="Due date" hint={!editing && !dueTouched ? `Default SLA for ${LABELS.tier[severity].toLowerCase()} severity: ${SEVERITY_SLA_DAYS[severity]} days` : undefined}>
-            <Input type="date" value={dueDate} onChange={(e) => { setDueDate(e.target.value); setDueTouched(true); }} />
+          <Field label="Due date" error={(submitted || dueDate) && errors.due ? <span id="finding-due-error" role="alert">{errors.due}</span> : null} hint={!editing && !dueTouched ? `Default SLA for ${LABELS.tier[severity].toLowerCase()} severity: ${SEVERITY_SLA_DAYS[severity]} days` : undefined}>
+            <Input type="date" value={dueDate} min={dueChanged ? todayIso() : undefined} invalid={!!errors.due} aria-invalid={errors.due ? true : undefined} aria-describedby={errors.due ? "finding-due-error" : undefined} onChange={(e) => { setDueDate(e.target.value); setDueTouched(true); setServerError(null); }} />
           </Field>
         </div>
+        {serverError && <p role="alert" className="rounded-md border border-red-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">{serverError}</p>}
         <button type="submit" className="hidden" />
       </form>
     </Modal>

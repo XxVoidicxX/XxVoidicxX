@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Check, ChevronDown, type LucideIcon } from "lucide-react";
 import { Badge, Button, Card, cn } from "@/components/ui";
 import { LABELS, TONES, fmtMoney, type Tone } from "@/lib/format";
@@ -120,7 +120,14 @@ export interface MenuItem { key: string; label: ReactNode; description?: ReactNo
 
 export function DropdownMenu({ label, icon, items, align = "right", variant = "secondary" }: { label: ReactNode; icon?: LucideIcon; items: MenuItem[]; align?: "left" | "right"; variant?: "secondary" | "ghost" | "outline" }) {
   const [open, setOpen] = useState(false);
+  const [side, setSide] = useState(align);
   const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return;
+    const r = ref.current.getBoundingClientRect();
+    const w = Math.min(256, window.innerWidth - 16);
+    setSide(align === "right" ? (r.right - w < 8 ? "left" : "right") : (r.left + w > window.innerWidth - 8 ? "right" : "left"));
+  }, [open, align]);
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
@@ -133,7 +140,7 @@ export function DropdownMenu({ label, icon, items, align = "right", variant = "s
     <div className="relative" ref={ref}>
       <Button variant={variant} icon={icon} iconRight={ChevronDown} onClick={() => setOpen((o) => !o)} aria-haspopup="menu" aria-expanded={open}>{label}</Button>
       {open && (
-        <div role="menu" className={cn("absolute z-40 mt-1.5 w-64 rounded-lg border border-ink-200 bg-white p-1 shadow-pop animate-fade-in", align === "right" ? "right-0" : "left-0")}>
+        <div role="menu" className={cn("absolute z-40 mt-1.5 w-64 max-w-[calc(100vw-1rem)] rounded-lg border border-ink-200 bg-white p-1 shadow-pop animate-fade-in", side === "right" ? "right-0" : "left-0")}>
           {items.map((it) => {
             const Icon = it.icon;
             return (

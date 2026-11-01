@@ -27,13 +27,13 @@ export function WeightPill({ weight }: { weight: number }) {
 
 export function AnswerSegmented({ value, onChange, disabled, label }: { value: Answer | null; onChange: (a: Answer | null) => void; disabled?: boolean; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="inline-flex rounded-lg border border-ink-200 bg-ink-50 p-0.5 gap-0.5">
+    <div role="radiogroup" aria-label={label} className="grid w-full grid-cols-4 sm:inline-flex sm:w-auto rounded-lg border border-ink-200 bg-ink-50 p-0.5 gap-0.5">
       {OPTIONS.map((o) => {
         const on = value === o.id;
         const Icon = o.icon;
         return (
-          <button key={o.id} type="button" role="radio" aria-checked={on} disabled={disabled} onClick={() => onChange(on ? null : o.id)} className={cn("h-8 min-w-[76px] px-3 rounded-md text-sm font-medium inline-flex items-center justify-center gap-1.5 transition-colors focus-ring disabled:cursor-not-allowed", on ? o.on : cn("text-ink-600", o.hover))}>
-            <Icon className="h-3.5 w-3.5" strokeWidth={2.5} />
+          <button key={o.id} type="button" role="radio" aria-checked={on} disabled={disabled} onClick={() => onChange(on ? null : o.id)} className={cn("h-8 min-w-0 px-1 text-xs sm:min-w-[76px] sm:px-3 sm:text-sm rounded-md font-medium inline-flex items-center justify-center gap-1.5 transition-colors focus-ring disabled:cursor-not-allowed", on ? o.on : cn("text-ink-600", o.hover))}>
+            <Icon className="hidden sm:block h-3.5 w-3.5" strokeWidth={2.5} />
             {o.label}
           </button>
         );
@@ -42,7 +42,7 @@ export function AnswerSegmented({ value, onChange, disabled, label }: { value: A
   );
 }
 
-export const QuestionCard = memo(function QuestionCard({ q, index, draft, editable, canRaise, onChange, onRaise }: { q: TemplateQuestion; index: number; draft: Draft | undefined; editable: boolean; canRaise: boolean; onChange: (id: number, patch: Partial<Draft>) => void; onRaise: (q: TemplateQuestion) => void }) {
+export const QuestionCard = memo(function QuestionCard({ q, index, draft, editable, canRaise, onChange, onRaise, findingCount = 0 }: { q: TemplateQuestion; index: number; draft: Draft | undefined; editable: boolean; canRaise: boolean; onChange: (id: number, patch: Partial<Draft>) => void; onRaise: (q: TemplateQuestion) => void; findingCount?: number }) {
   const answer = draft ? draft.answer : q.answer ?? null;
   const note = draft ? draft.note : q.note ?? "";
   const [noteToggle, setNoteToggle] = useState<boolean | null>(null);
@@ -60,6 +60,7 @@ export const QuestionCard = memo(function QuestionCard({ q, index, draft, editab
             <span className="text-ink-300">·</span>
             <span className="text-[11px] font-medium text-ink-400 tnum">Q{index}</span>
             <WeightPill weight={q.weight} />
+            {findingCount > 0 && <Badge tone="danger" size="xs"><Flag className="h-2.5 w-2.5" />{findingCount} finding{findingCount === 1 ? "" : "s"}</Badge>}
           </div>
           <p className="mt-1.5 text-[15px] leading-6 font-medium text-ink-900">{q.text}</p>
           {q.guidance && (

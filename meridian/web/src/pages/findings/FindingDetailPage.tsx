@@ -8,12 +8,14 @@ import { daysUntil, fmtDate, fmtRelative, LABELS, parseDate, TONES } from "@/lib
 import type { Approval, Finding, FindingDetail, FindingStatus } from "@/lib/types";
 import { Badge, Button, Card, CardHeader, cn, DescriptionList, EmptyState, Field, Modal, PageHeader, PageLoader, Textarea } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
-import { ActivityTimeline, CommentsThread, NotFoundState, slaInfo, TierBadge, UserCell } from "@/components/assessments/common";
+import { ActivityTimeline, CommentsThread, NotFoundState, parseQuestionRef, slaInfo, TierBadge, UserCell } from "@/components/assessments/common";
 import { FindingFormModal } from "@/components/findings/FindingFormModal";
+import { HeaderActions } from "@/components/contracts/shared";
 
 function SlaCard({ f }: { f: FindingDetail }) {
   const resolved = f.status === "closed" || f.status === "risk_accepted";
-  const sla = slaInfo(f.due_date, resolved ? f.resolved_at ?? f.created_at : null, f.created_at);
+  const accepted = f.status === "risk_accepted";
+  const sla = slaInfo(f.due_date, resolved ? f.resolved_at ?? f.created_at : null, f.created_at, f.status);
   const created = parseDate(f.created_at);
   const due = parseDate(f.due_date);
   const end = resolved ? parseDate(f.resolved_at) ?? new Date() : new Date();
@@ -22,16 +24,16 @@ function SlaCard({ f }: { f: FindingDetail }) {
   const pct = span > 0 ? Math.min(100, Math.max(0, (elapsed / span) * 100)) : 100;
   const d = daysUntil(f.due_date);
   const overdue = !resolved && d != null && d < 0;
-  const bar = resolved ? "bg-success-600" : overdue ? "bg-danger-600" : pct > 75 ? "bg-warning-600" : "bg-brand-500";
+  const bar = accepted ? "bg-sky-500" : resolved ? "bg-success-600" : overdue ? "bg-danger-600" : pct > 75 ? "bg-warning-600" : "bg-brand-500";
   const big = resolved ? sla.label : d == null ? "No due date" : overdue ? `${Math.abs(d)} days overdue` : d === 0 ? "Due today" : `${d} days left`;
   return (
     <Card>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Remediation SLA</p>
-          <p className={cn("mt-1.5 text-xl font-semibold tracking-tight tnum", resolved ? "text-success-700" : overdue ? "text-danger-700" : d != null && d <= 7 ? "text-warning-700" : "text-ink-900")}>{big}</p>
+          <p className="text-xs font-medium uppercase tracking-wide text-ink-500">{accepted ? "Outcome" : "Remediation SLA"}</p>
+          <p className={cn("mt-1.5 text-xl font-semibold tracking-tight tnum", accepted ? "text-sky-700" : resolved ? "text-success-700" : overdue ? "text-danger-700" : d != null && d <= 7 ? "text-warning-700" : "text-ink-900")}>{big}</p>
         </div>
-        <span className={cn("h-9 w-9 rounded-lg flex items-center justify-center", resolved ? "bg-success-50 text-success-600" : overdue ? "bg-danger-50 text-danger-600" : "bg-brand-50 text-brand-600")}>{resolved ? <CheckCircle2 className="h-4.5 w-4.5" /> : <Clock className="h-4.5 w-4.5" />}</span>
+        <span className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", accepted ? "bg-sky-50 text-sky-600" : resolved ? "bg-success-50 text-success-600" : overdue ? "bg-danger-50 text-danger-600" : "bg-brand-50 text-brand-600")}>{accepted ? <ShieldCheck className="h-4.5 w-4.5" /> : resolved ? <CheckCircle2 className="h-4.5 w-4.5" /> : <Clock className="h-4.5 w-4.5" />}</span>
       </div>
       {due && (
         <>
@@ -115,7 +117,9 @@ export default function FindingDetailPage() {
   if (q.error || !f) return <Card><EmptyState icon={AlertCircle} title="Could not load finding" description={(q.error as Error | null)?.message} action={<Button variant="secondary" onClick={() => q.refetch()}>Try again</Button>} /></Card>;
 
   const resolved = f.status === "closed" || f.status === "risk_accepted";
-  const sla = slaInfo(f.due_date, resolved ? f.resolved_at ?? f.created_at : null, f.created_at);
+  const sla = slaInfo(f.due_date, resolved ? f.resolved_at ?? f.created_at : null, f.created_at, f.status);
+  const accepted = f.status === "risk_accepted";
+  const qRef = f.assessment_id ? parseQuestionRef(f.description) : null;
   const raApprovals = f.approvals.filter((a) => a.type === "risk_acceptance");
   const pending = raApprovals.find((a) => a.status === "pending");
   const latest = raApprovals[0];
@@ -128,7 +132,8 @@ export default function FindingDetailPage() {
     <>
       <PageHeader
         breadcrumbs={[{ label: "Findings", to: "/findings" }, { label: `F-${String(f.id).padStart(4, "0")}` }]}
-        title={f.title}
+        title={<span className="block break-words [overflow-wrap:anywhere]">{f.title}</span>}
+        documentTitle={f.title}
         meta={
           <>
             <Badge tone={TONES.tier[f.severity]}>{LABELS.tier[f.severity]} severity</Badge>
@@ -140,7 +145,7 @@ export default function FindingDetailPage() {
           </>
         }
         actions={canWrite && (
-          <>
+          <HeaderActions>
             <Button variant="secondary" icon={Edit3} onClick={() => setEditOpen(true)}>Edit</Button>
             {(f.status === "open" || f.status === "in_remediation") && (
               <Button variant="secondary" icon={ShieldQuestion} onClick={() => setRaOpen(true)} disabled={!!pending} title={pending ? "A risk acceptance request is already pending" : undefined}>Request risk acceptance</Button>
@@ -153,7 +158,7 @@ export default function FindingDetailPage() {
             )}
             {f.status === "in_remediation" && <Button icon={CheckCircle2} onClick={() => setCloseOpen(true)}>Close</Button>}
             {resolved && <Button icon={RotateCcw} loading={busy} onClick={() => transition.mutate({ status: "open" })}>Reopen</Button>}
-          </>
+          </HeaderActions>
         )}
       />
 
@@ -231,10 +236,13 @@ export default function FindingDetailPage() {
             <DescriptionList cols={1} items={[
               { label: "Vendor", value: <span className="inline-flex items-center gap-2"><Link to={`/vendors/${f.vendor_id}`} className="font-medium text-brand-700 hover:underline">{f.vendor_name}</Link><TierBadge tier={f.vendor_tier} size="xs" /></span> },
               { label: "Source assessment", value: f.assessment_id ? <Link to={`/assessments/${f.assessment_id}`} className="inline-flex items-start gap-1.5 text-brand-700 hover:underline"><ClipboardList className="h-4 w-4 mt-0.5 shrink-0" />{f.assessment_title ?? `Assessment #${f.assessment_id}`}</Link> : <span className="text-ink-500">Raised manually</span> },
+              ...(qRef ? [{ label: "Source question", value: <span><span className="font-medium tnum">Q{qRef.n}</span> <span className="text-ink-500">· {qRef.section}</span></span> }] : []),
               { label: "Owner", value: <UserCell name={f.owner_name} /> },
               { label: "Due date", value: <span className="tnum">{fmtDate(f.due_date)}</span> },
-              { label: "Raised", value: <span className="tnum">{fmtDate(f.created_at)} <span className="text-ink-500">· {age != null ? `${age}d ${resolved ? "to resolve" : "open"}` : ""}</span></span> },
-              { label: "Resolved", value: f.resolved_at ? <span className="tnum">{fmtDate(f.resolved_at)}</span> : <span className="text-ink-400">Not resolved</span> },
+              { label: "Raised", value: <span className="tnum">{fmtDate(f.created_at)} <span className="text-ink-500">· {age != null ? `${age}d ${accepted ? "until accepted" : resolved ? "to resolve" : "open"}` : ""}</span></span> },
+              accepted
+                ? { label: "Risk accepted", value: f.resolved_at ? <span className="tnum">{fmtDate(f.resolved_at)}</span> : <span className="text-ink-400">—</span> }
+                : { label: "Resolved", value: f.resolved_at ? <span className="tnum">{fmtDate(f.resolved_at)}</span> : <span className="text-ink-400">Not resolved</span> },
             ]} />
           </Card>
           {raApprovals.length > 0 && (

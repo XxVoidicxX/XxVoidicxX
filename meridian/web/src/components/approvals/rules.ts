@@ -1,6 +1,6 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { Approval, ApprovalDetail, ApprovalType, Role } from "@/lib/types";
-import { parseDate } from "@/lib/format";
+import { LABELS, TONES, parseDate, titleCase, type Tone } from "@/lib/format";
 
 export type ApprovalRow = Approval & { vendor_id?: number | null };
 export type ApprovalDetailRow = ApprovalDetail & { vendor_id?: number | null; approver_roles?: Role[] };
@@ -58,4 +58,36 @@ const ENTITY_KEYS: Record<string, string[]> = {
 export function invalidateAfterDecision(qc: QueryClient, entityType?: string) {
   const keys = ["approvals", "approvals-badge", "notifications", "activity", "comments", "dashboard", "reports", ...(entityType ? ENTITY_KEYS[entityType] ?? [] : []), "vendor", "vendors"];
   for (const k of new Set(keys)) qc.invalidateQueries({ queryKey: [k] });
+}
+
+const STATUS_LABELS: Record<string, Record<string, string>> = {
+  vendor: LABELS.vendorStatus, contract: LABELS.contractStatus, assessment: LABELS.assessmentStatus, document: LABELS.documentStatus,
+  finding: LABELS.findingStatus, approval: LABELS.approvalStatus, obligation: LABELS.obligationStatus,
+};
+const STATUS_TONES: Record<string, Record<string, Tone>> = {
+  vendor: TONES.vendorStatus, contract: TONES.contractStatus, assessment: TONES.assessmentStatus, document: TONES.documentStatus,
+  finding: TONES.findingStatus, approval: TONES.approvalStatus, obligation: TONES.obligationStatus,
+};
+const TYPE_LABELS: Record<string, Record<string, string>> = { contract: LABELS.contractType, document: LABELS.documentType, approval: LABELS.approvalType };
+const KEY_LABELS: Record<string, Record<string, string>> = {
+  tier: LABELS.tier, severity: LABELS.tier, risk_rating: LABELS.tier, data_access: LABELS.dataAccess, role: LABELS.role, answer: LABELS.answer, priority: PRIORITY_LABEL,
+  decision: { ...LABELS.approvalStatus, complete: "Complete", return: "Return" },
+};
+const STATUS_KEYS = new Set(["status", "from", "to", "previous_status", "new_status", "from_status", "to_status"]);
+const ENUM_RE = /^[a-z0-9]+(?:_[a-z0-9]+)+$/;
+
+export function statusTones(entityType: string): Record<string, Tone> {
+  return STATUS_TONES[entityType] ?? {};
+}
+
+export function humanizeKey(key: string): string {
+  return titleCase(key);
+}
+
+export function humanizeValue(key: string, value: string, entityType: string): string {
+  const k = key.toLowerCase();
+  const map = STATUS_KEYS.has(k) ? STATUS_LABELS[entityType] : k === "type" ? TYPE_LABELS[entityType] : KEY_LABELS[k];
+  if (map?.[value]) return map[value];
+  if (STATUS_KEYS.has(k)) for (const m of Object.values(STATUS_LABELS)) if (m[value]) return m[value];
+  return ENUM_RE.test(value) ? titleCase(value) : value;
 }

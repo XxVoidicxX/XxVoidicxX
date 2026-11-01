@@ -8,7 +8,8 @@ import { fmtDate, fmtRelative, LABELS, TONES } from "@/lib/format";
 import type { Assessment, AssessmentDetail, Comment, Finding, TemplateQuestion } from "@/lib/types";
 import { Badge, Button, Card, CardHeader, Checkbox, cn, DataTable, EmptyState, Field, Modal, PageHeader, PageLoader, Tabs, Textarea, type Column } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
-import { ActivityTimeline, CommentsThread, DueCell, fmtScore, NotFoundState, ProgressBar, ProgressRing, RATING_LABEL, RATING_STROKE, RATING_TEXT, ratingFromScore, scoreAnswers, TierBadge, UserCell } from "@/components/assessments/common";
+import { ActivityTimeline, CommentsThread, DueCell, fmtScore, NotFoundState, parseQuestionRef, ProgressBar, ProgressRing, questionRefPrefix, RATING_LABEL, RATING_STROKE, RATING_TEXT, ratingFromScore, scoreAnswers, TierBadge, UserCell } from "@/components/assessments/common";
+import { HeaderActions } from "@/components/contracts/shared";
 import { QuestionCard } from "@/components/assessments/QuestionCard";
 import { useAnswerAutosave, type Draft, type SaveState } from "@/components/assessments/useAnswerAutosave";
 import { FindingFormModal, type FindingFormInitial } from "@/components/findings/FindingFormModal";
@@ -67,6 +68,8 @@ export default function AssessmentDetailPage() {
   const [summary, setSummary] = useState("");
   const [returnMsg, setReturnMsg] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [confirmSubmit, setConfirmSubmit] = useState(false);
+  const submitLock = useRef(false);
 
   const questions = useMemo(() => a?.questions ?? [], [a?.questions]);
   const sections = useMemo(() => {
@@ -123,9 +126,14 @@ export default function AssessmentDetailPage() {
       if (!ok) throw new Error("Some answers could not be saved. Retry saving before submitting.");
       return api.post<{ data: Assessment }>(`/api/assessments/${id}/submit`);
     },
-    onSuccess: () => { setSubmitError(null); refresh(); toast("success", "Submitted for review", a?.reviewer_name ? `${a.reviewer_name} has been notified.` : undefined); },
+    onSuccess: () => { setSubmitError(null); setConfirmSubmit(false); refresh(); toast("success", "Submitted for review", a?.reviewer_name ? `${a.reviewer_name} has been notified.` : undefined); },
     onError: (e: Error) => { setSubmitError(e.message); toast("error", "Could not submit", e.message); },
   });
+  const doSubmit = () => {
+    if (submitLock.current) return;
+    submitLock.current = true;
+    submit.mutate(undefined, { onSettled: () => { submitLock.current = false; } });
+  };
   const startReview = useMutation({
     mutationFn: () => api.post<{ data: Assessment }>(`/api/assessments/${id}/start-review`),
     onSuccess: () => { refresh(); toast("success", "Review started", "You are now the reviewer for this assessment."); },
@@ -153,11 +161,24 @@ export default function AssessmentDetailPage() {
     const ans = d?.answer ?? qq.answer ?? null;
     const note = (d?.note ?? qq.note ?? "").trim();
     const sev = ans === "no" ? (qq.weight >= 3 ? "high" : "medium") : ans === "partial" ? (qq.weight >= 3 ? "medium" : "low") : "medium";
+    const n = questions.findIndex((x) => x.id === qq.id) + 1;
     setFindingInit({
-      vendor_id: a.vendor_id, assessment_id: a.id, assessment_title: a.title, severity: sev,
-      description: `${qq.section} — ${qq.text}${ans ? `\n\nAssessment answer: ${LABELS.answer[ans]}` : ""}${note ? `\nAssessor note: ${note}` : ""}`,
+      vendor_id: a.vendor_id, assessment_id: a.id, assessment_title: `${a.title} · Q${n} (${qq.section})`, severity: sev,
+      description: `${questionRefPrefix(n, qq.section)}${qq.text}${ans ? `\n\nAssessment answer: ${LABELS.answer[ans]}` : ""}${note ? `\nAssessor note: ${note}` : ""}`,
     });
-  }, [a]);
+  }, [a, questions]);
+  const questionRef = useCallback((f: Finding) => {
+    const r = parseQuestionRef(f.description);
+    if (r) return r;
+    const desc = f.description ?? "";
+    const i = questions.findIndex((qq) => desc.startsWith(`${qq.section} — ${qq.text}`));
+    return i >= 0 ? { n: i + 1, section: questions[i].section } : null;
+  }, [questions]);
+  const findingsByQuestion = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const f of a?.findings ?? []) { const r = questionRef(f); if (r) m.set(r.n, (m.get(r.n) ?? 0) + 1); }
+    return m;
+  }, [a?.findings, questionRef]);
 
   const jumpTo = (elId: string) => document.getElementById(elId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   const nextUnanswered = questions.find((qq) => !answerOf(qq));
@@ -168,7 +189,8 @@ export default function AssessmentDetailPage() {
 
   const pct = total ? Math.round((answered / total) * 100) : 0;
   const findingCols: Column<Finding>[] = [
-    { key: "title", header: "Finding", render: (f) => <span className="font-medium text-ink-900">{f.title}</span> },
+    { key: "title", header: "Finding", render: (f) => <span className="block min-w-[12rem] font-medium text-ink-900">{f.title}</span> },
+    { key: "source", header: "Source", render: (f) => { const r = questionRef(f); return r ? <span className="whitespace-nowrap text-ink-700"><span className="font-medium tnum">Q{r.n}</span><span className="text-ink-500"> · {r.section}</span></span> : <span className="text-ink-500">Whole assessment</span>; } },
     { key: "severity", header: "Severity", render: (f) => <Badge tone={TONES.tier[f.severity]}>{LABELS.tier[f.severity]}</Badge> },
     { key: "status", header: "Status", render: (f) => <Badge tone={TONES.findingStatus[f.status]} dot>{LABELS.findingStatus[f.status]}</Badge> },
     { key: "owner", header: "Owner", render: (f) => <UserCell name={f.owner_name} /> },
@@ -207,7 +229,8 @@ export default function AssessmentDetailPage() {
     <>
       <PageHeader
         breadcrumbs={[{ label: "Assessments", to: "/assessments" }, { label: a.title }]}
-        title={a.title}
+        title={<span className="block break-words [overflow-wrap:anywhere]">{a.title}</span>}
+        documentTitle={a.title}
         meta={
           <>
             <Badge tone={TONES.assessmentStatus[a.status]} dot>{LABELS.assessmentStatus[a.status]}</Badge>
@@ -219,10 +242,10 @@ export default function AssessmentDetailPage() {
           </>
         }
         actions={
-          <>
+          <HeaderActions>
             {canWrite && <Button variant="secondary" icon={Flag} onClick={() => setFindingInit({ vendor_id: a.vendor_id, assessment_id: a.id, assessment_title: a.title })}>Raise finding</Button>}
             {editable && (
-              <Button icon={Send} onClick={() => submit.mutate()} loading={submit.isPending} disabled={unanswered > 0} title={unanswered > 0 ? `${unanswered} question(s) still unanswered` : undefined}>Submit for review</Button>
+              <Button icon={Send} onClick={() => setConfirmSubmit(true)} loading={submit.isPending} disabled={unanswered > 0 || submit.isPending} title={unanswered > 0 ? `${unanswered} question(s) still unanswered` : undefined}>Submit for review</Button>
             )}
             {canStartReview && <Button icon={Eye} onClick={() => startReview.mutate()} loading={startReview.isPending}>Start review</Button>}
             {canReview && (
@@ -231,7 +254,7 @@ export default function AssessmentDetailPage() {
                 <Button icon={ClipboardCheck} onClick={() => { setSummary(a.summary ?? ""); setCompleteOpen(true); }}>Complete review</Button>
               </>
             )}
-          </>
+          </HeaderActions>
         }
       />
 
@@ -277,7 +300,7 @@ export default function AssessmentDetailPage() {
                 </div>
                 <div className="space-y-3">
                   {items.map((qq) => (
-                    <QuestionCard key={qq.id} q={qq} index={indexOf.get(qq.id) ?? 0} draft={drafts[qq.id]} editable={editable} canRaise={canWrite} onChange={update} onRaise={raiseFromQuestion} />
+                    <QuestionCard key={qq.id} q={qq} index={indexOf.get(qq.id) ?? 0} draft={drafts[qq.id]} editable={editable} canRaise={canWrite} onChange={update} onRaise={raiseFromQuestion} findingCount={findingsByQuestion.get(indexOf.get(qq.id) ?? 0) ?? 0} />
                   ))}
                 </div>
               </section>
@@ -331,7 +354,7 @@ export default function AssessmentDetailPage() {
                     {nextUnanswered && <Button size="xs" variant="outline" icon={ArrowDownToLine} onClick={() => jumpTo(`q-${nextUnanswered.id}`)}>Next unanswered</Button>}
                   </div>
                 ) : (
-                  <Button className="w-full" icon={Send} onClick={() => submit.mutate()} loading={submit.isPending}>Submit for review</Button>
+                  <Button className="w-full" icon={Send} onClick={() => setConfirmSubmit(true)} loading={submit.isPending}>Submit for review</Button>
                 )}
                 {submitError && <p className="mt-2 flex items-start gap-1.5 text-xs text-danger-700"><ShieldAlert className="h-3.5 w-3.5 mt-px shrink-0" />{submitError}</p>}
               </div>
@@ -365,6 +388,23 @@ export default function AssessmentDetailPage() {
       </Card>
 
       <FindingFormModal open={!!findingInit} onClose={() => setFindingInit(null)} initial={findingInit ?? undefined} lockVendor onSaved={() => setTab("findings")} />
+
+      <Modal open={confirmSubmit} onClose={() => { if (!submit.isPending) setConfirmSubmit(false); }} size="sm" title="Submit for review?" description={`${a.title} will be sent to ${a.reviewer_name ?? "a reviewer"} for review.`}
+        footer={<><Button variant="secondary" onClick={() => setConfirmSubmit(false)} disabled={submit.isPending}>Cancel</Button><Button icon={Send} loading={submit.isPending} disabled={submit.isPending || unanswered > 0} onClick={doSubmit}>Submit for review</Button></>}>
+        <div className="space-y-4">
+          <div className="flex items-center gap-4 rounded-lg border border-ink-200 bg-ink-50/60 p-3">
+            <ProgressRing pct={liveScore ?? 0} size={56} stroke={6} strokeClassName={liveRating ? RATING_STROKE[liveRating] : "stroke-ink-200"}>
+              <span className={cn("text-sm font-semibold tnum", liveRating ? RATING_TEXT[liveRating] : "text-ink-400")}>{fmtScore(liveScore)}</span>
+            </ProgressRing>
+            <div className="min-w-0 text-sm">
+              <p className="font-medium text-ink-900">Score {fmtScore(liveScore)} · {liveRating ? RATING_LABEL[liveRating] : "Not scored"}</p>
+              <p className="text-ink-500 text-xs mt-0.5">{answered}/{total} answered · {dist.yes} yes · {dist.partial} partial · {dist.no} no · {dist.na} N/A · {a.findings.length} finding{a.findings.length === 1 ? "" : "s"} raised</p>
+            </div>
+          </div>
+          <p className="flex items-start gap-2 rounded-md border border-amber-200 bg-warning-50 px-3 py-2 text-sm text-warning-700"><Lock className="h-4 w-4 mt-0.5 shrink-0" />Answers and notes lock after submission. They can only be changed if the reviewer returns the assessment for more information.</p>
+          {submitError && <p role="alert" className="flex items-start gap-1.5 text-xs text-danger-700"><ShieldAlert className="h-3.5 w-3.5 mt-px shrink-0" />{submitError}</p>}
+        </div>
+      </Modal>
 
       <Modal open={completeOpen} onClose={() => setCompleteOpen(false)} title="Complete review" description="Completing locks the assessment and updates the vendor's residual risk."
         footer={<><Button variant="secondary" onClick={() => setCompleteOpen(false)}>Cancel</Button><Button icon={ClipboardCheck} loading={review.isPending} onClick={() => review.mutate("complete")}>Complete review</Button></>}>

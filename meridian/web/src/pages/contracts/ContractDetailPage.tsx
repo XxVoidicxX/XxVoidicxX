@@ -10,7 +10,7 @@ import { Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, P
 import { useToast } from "@/components/ui/toast";
 import { ContractFormModal } from "@/components/contracts/ContractFormModal";
 import { ActivityTimeline, ApprovalsHistory, LinkedDocuments, ObligationModal, ObligationsPanel, RenewalPanel } from "@/components/contracts/ContractPanels";
-import { ConfirmDialog, Dropdown, VendorTierBadge, errorMessage, type MenuItem } from "@/components/contracts/shared";
+import { ConfirmDialog, Dropdown, HeaderActions, VendorTierBadge, errorMessage, useInFlight, type MenuItem } from "@/components/contracts/shared";
 import { DocumentUploadModal } from "@/components/documents/DocumentModals";
 
 type TabId = "overview" | "obligations" | "documents" | "approvals" | "activity";
@@ -20,7 +20,8 @@ export default function ContractDetailPage() {
   const { id: idParam } = useParams();
   const id = Number(idParam);
   const navigate = useNavigate();
-  const { canWrite } = useAuth();
+  const { canWrite, can } = useAuth();
+  const guard = useInFlight();
   const { toast } = useToast();
   const qc = useQueryClient();
   const [sp, setSp] = useSearchParams();
@@ -78,14 +79,15 @@ export default function ContractDetailPage() {
   const pendingObs = c.obligations.filter((o) => o.status === "pending").length;
 
   const menuItems: (MenuItem | "divider")[] = [];
-  if (c.status === "terminated") menuItems.push({ label: "Reactivate contract", icon: RotateCcw, onSelect: () => setConfirm("reactivate") });
+  if (c.status === "terminated") menuItems.push(can("admin") ? { label: "Reactivate contract", icon: RotateCcw, onSelect: () => setConfirm("reactivate") } : { label: "Reactivate contract", icon: RotateCcw, disabled: true, hint: "Only administrators can reactivate a contract", onSelect: () => undefined });
   else menuItems.push({ label: "Mark terminated", icon: Ban, danger: true, onSelect: () => setConfirm("terminate") });
 
   return (
     <div className="space-y-5">
       <PageHeader
         breadcrumbs={[{ label: "Contracts", to: "/contracts" }, { label: c.contract_number }]}
-        title={c.title}
+        title={<span className="block break-words [overflow-wrap:anywhere]">{c.title}</span>}
+        documentTitle={c.title}
         meta={
           <>
             <Badge tone={TONES.contractStatus[c.status]} dot>{LABELS.contractStatus[c.status]}</Badge>
@@ -100,16 +102,16 @@ export default function ContractDetailPage() {
         }
         actions={
           canWrite ? (
-            <>
+            <HeaderActions>
               <Button variant="secondary" icon={Pencil} onClick={() => setEditing(true)}>Edit</Button>
               <Button variant="secondary" icon={Plus} onClick={() => setAddingObligation(true)}>Add obligation</Button>
-              {canSubmit && <Button icon={Send} onClick={() => setConfirm("submit")}>Submit for approval</Button>}
+              {canSubmit && <Button icon={Send} onClick={() => setConfirm("submit")} disabled={submit.isPending}>Submit for approval</Button>}
               <Dropdown
                 label="Status actions"
                 items={menuItems}
                 trigger={(t) => <Button {...t} variant="secondary" iconRight={ChevronDown}>Status</Button>}
               />
-            </>
+            </HeaderActions>
           ) : undefined
         }
       />
@@ -202,7 +204,7 @@ export default function ContractDetailPage() {
       <ConfirmDialog
         open={confirm === "submit"}
         onClose={() => setConfirm(null)}
-        onConfirm={() => submit.mutate()}
+        onConfirm={() => guard(() => submit.mutateAsync())}
         loading={submit.isPending}
         title="Submit for approval?"
         confirmLabel="Submit"
@@ -211,7 +213,7 @@ export default function ContractDetailPage() {
       <ConfirmDialog
         open={confirm === "terminate"}
         onClose={() => setConfirm(null)}
-        onConfirm={() => changeStatus.mutate("terminated")}
+        onConfirm={() => guard(() => changeStatus.mutateAsync("terminated"))}
         loading={changeStatus.isPending}
         danger
         title="Mark contract as terminated?"
@@ -221,7 +223,7 @@ export default function ContractDetailPage() {
       <ConfirmDialog
         open={confirm === "reactivate"}
         onClose={() => setConfirm(null)}
-        onConfirm={() => changeStatus.mutate("active")}
+        onConfirm={() => guard(() => changeStatus.mutateAsync("active"))}
         loading={changeStatus.isPending}
         title="Reactivate contract?"
         confirmLabel="Reactivate"

@@ -229,7 +229,7 @@ export function PageHeader({ title, description, actions, breadcrumbs, meta, doc
           {description && <p className="text-sm text-ink-500 mt-1">{description}</p>}
           {meta && <div className="flex flex-wrap items-center gap-2 mt-2">{meta}</div>}
         </div>
-        {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        {actions && <div className="flex flex-wrap items-center gap-2 min-w-0">{actions}</div>}
       </div>
     </div>
   );

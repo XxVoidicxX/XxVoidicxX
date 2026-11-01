@@ -102,7 +102,8 @@ export function DueCell({ date, resolved, compact }: { date: string | null | und
   );
 }
 
-export function slaInfo(date: string | null | undefined, resolvedAt?: string | null, createdAt?: string | null): { tone: Tone; label: string } {
+export function slaInfo(date: string | null | undefined, resolvedAt?: string | null, createdAt?: string | null, status?: string): { tone: Tone; label: string } {
+  if (status === "risk_accepted") return { tone: "info", label: resolvedAt ? `Risk accepted on ${fmtDate(resolvedAt)}` : "Risk accepted" };
   if (resolvedAt) {
     const c = parseDate(createdAt);
     const r = parseDate(resolvedAt);
@@ -253,7 +254,7 @@ export function CommentsThread({ entityType, entityId, onChange }: { entityType:
         <div className="mt-5 flex gap-3">
           <Avatar name={user?.name} size="md" />
           <div className="flex-1 min-w-0">
-            <Textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a comment…" rows={3} maxLength={4000} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
+            <Textarea aria-label="Add a comment" value={body} onChange={(e) => setBody(e.target.value)} placeholder="Write a comment…" rows={3} maxLength={4000} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); } }} />
             <div className="mt-2 flex items-center justify-between gap-3">
               <span className="text-xs text-ink-400">Ctrl/⌘ + Enter to post</span>
               <Button size="sm" icon={Send} onClick={submit} loading={add.isPending} disabled={!body.trim()}>Comment</Button>
@@ -276,4 +277,13 @@ export function NotFoundState({ what, backTo, backLabel }: { what: string; backT
 export function TierBadge({ tier, size = "sm", suffix }: { tier: Tier | null | undefined; size?: "xs" | "sm"; suffix?: string }) {
   if (!tier) return <span className="text-ink-400">—</span>;
   return <Badge tone={TONES.tier[tier]} size={size}>{LABELS.tier[tier]}{suffix ? ` ${suffix}` : ""}</Badge>;
+}
+
+const QUESTION_REF = /^Q(\d+) \(([^)\n]*)\):\s*/;
+export function questionRefPrefix(n: number, section: string): string {
+  return `Q${n} (${section}): `;
+}
+export function parseQuestionRef(description: string | null | undefined): { n: number; section: string } | null {
+  const m = QUESTION_REF.exec(description ?? "");
+  return m ? { n: Number(m[1]), section: m[2] } : null;
 }

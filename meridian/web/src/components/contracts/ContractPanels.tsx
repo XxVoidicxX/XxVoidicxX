@@ -25,17 +25,22 @@ export function renewalState(c: Contract): RenewalState & { noticeDate: Date | n
     if (!end) return { ...base, tone: "neutral", title: "Not yet in force", body: "Set an end date to track renewals." };
   }
   if (!end || daysLeft == null) return { ...base, tone: "neutral", title: "No end date", body: "Evergreen or undefined term — renewal tracking is off." };
-  if (daysLeft < 0) return { ...base, tone: "danger", title: "Term ended", body: `Ended ${Math.abs(daysLeft)} days ago on ${format(end, "MMM d, yyyy")}.` };
-  if (daysToNotice != null && daysToNotice <= 0) {
+  const deadline = noticeDate ? format(noticeDate, "MMM d, yyyy") : "";
+  const endLabel = format(end, "MMM d, yyyy");
+  if (daysLeft < 0) return { ...base, tone: "neutral", title: "Term ended", body: `The term ended ${Math.abs(daysLeft)} day${Math.abs(daysLeft) === 1 ? "" : "s"} ago on ${endLabel}.` };
+  if (daysToNotice != null && daysToNotice >= 0) {
+    const when = daysToNotice === 0 ? "today" : `in ${daysToNotice} day${daysToNotice === 1 ? "" : "s"}`;
     return {
-      ...base, tone: "warning", title: "Notice period open",
+      ...base, tone: daysToNotice <= 30 ? "warning" : "success",
+      title: `Notice window open — non-renewal notice must be served by ${deadline}`,
       body: c.auto_renew
-        ? `Auto-renews in ${daysLeft} days unless non-renewal notice is served. Window opened ${format(noticeDate!, "MMM d")}.`
-        : `Expires in ${daysLeft} days. Decide to renew, renegotiate or exit — window opened ${format(noticeDate!, "MMM d")}.`,
+        ? `Deadline ${when}. If no notice is served, the contract auto-renews on ${endLabel}.`
+        : `Deadline ${when}. The contract expires on ${endLabel}; decide whether to renew, renegotiate or exit before the deadline.`,
     };
   }
-  if (daysToNotice != null && daysToNotice <= 30) return { ...base, tone: "info", title: `Notice window opens in ${daysToNotice} days`, body: `Plan the renewal decision before ${format(noticeDate!, "MMM d, yyyy")}.` };
-  return { ...base, tone: "success", title: "On track", body: `Notice window opens ${format(noticeDate!, "MMM d, yyyy")}.` };
+  return c.auto_renew
+    ? { ...base, tone: "danger", title: `Notice deadline passed on ${deadline} — auto-renews on ${endLabel}`, body: `Non-renewal notice can no longer be served for this term. Auto-renews in ${daysLeft} day${daysLeft === 1 ? "" : "s"}.` }
+    : { ...base, tone: "warning", title: `Notice deadline passed on ${deadline} — contract will expire on ${endLabel}`, body: `Expires in ${daysLeft} day${daysLeft === 1 ? "" : "s"} unless a renewal is agreed.` };
 }
 
 const stateCls: Record<RenewalState["tone"], string> = {
@@ -59,7 +64,7 @@ export function RenewalPanel({ contract: c }: { contract: Contract }) {
   const Icon = stateIcon[st.tone];
   return (
     <Card>
-      <CardHeader title="Renewal" description="Term and notice window" action={c.auto_renew ? <Badge tone="brand"><RefreshCw className="h-3 w-3" />Auto-renews</Badge> : <Badge tone="neutral">Manual renewal</Badge>} />
+      <CardHeader title="Renewal" description="Term and notice deadline" action={c.auto_renew ? <Badge tone="brand"><RefreshCw className="h-3 w-3" />Auto-renews</Badge> : <Badge tone="neutral">Manual renewal</Badge>} />
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-ink-500">Days remaining</p>
@@ -77,7 +82,7 @@ export function RenewalPanel({ contract: c }: { contract: Contract }) {
           <div className="relative h-2 rounded-full bg-ink-100" role="progressbar" aria-valuenow={Math.round(pct)} aria-valuemin={0} aria-valuemax={100} aria-label="Term elapsed">
             <div className={cn("h-full rounded-full", barTone)} style={{ width: `${pct}%` }} />
             {noticePct != null && noticePct > 0 && noticePct < 100 && (
-              <span className="absolute -top-1 h-4 w-0.5 rounded bg-warning-600" style={{ left: `calc(${noticePct}% - 1px)` }} title={`Notice window opens ${st.noticeDate ? format(st.noticeDate, "MMM d, yyyy") : ""}`} />
+              <span className="absolute -top-1 h-4 w-0.5 rounded bg-warning-600" style={{ left: `calc(${noticePct}% - 1px)` }} title={`Notice deadline ${st.noticeDate ? format(st.noticeDate, "MMM d, yyyy") : ""}`} aria-label={`Notice deadline ${st.noticeDate ? format(st.noticeDate, "MMM d, yyyy") : ""}`} role="img" />
             )}
           </div>
           <div className="mt-1.5 flex justify-between text-[11px] text-ink-500 tnum">
@@ -93,8 +98,8 @@ export function RenewalPanel({ contract: c }: { contract: Contract }) {
           <dd className="mt-0.5 font-medium text-ink-900 tnum">{c.renewal_notice_days} days</dd>
         </div>
         <div>
-          <dt className="text-xs text-ink-500">Notice window opens</dt>
-          <dd className="mt-0.5 font-medium text-ink-900 tnum">{st.noticeDate ? format(st.noticeDate, "MMM d, yyyy") : "—"}</dd>
+          <dt className="text-xs text-ink-500">Notice deadline</dt>
+          <dd className={cn("mt-0.5 font-medium tnum", st.daysToNotice != null && st.daysToNotice < 0 && (st.daysLeft ?? -1) >= 0 ? "text-danger-700" : "text-ink-900")}>{st.noticeDate ? format(st.noticeDate, "MMM d, yyyy") : "—"}</dd>
         </div>
       </dl>
       <div className={cn("mt-4 flex gap-2.5 rounded-lg border px-3 py-2.5", stateCls[st.tone])} data-testid="renewal-state">

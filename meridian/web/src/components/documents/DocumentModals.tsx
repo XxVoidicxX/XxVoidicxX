@@ -1,17 +1,39 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, FileText, UploadCloud, X, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, UploadCloud, X, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
-import { LABELS, TONES, fmtBytes, fmtDate, fmtDateTime } from "@/lib/format";
+import { LABELS, TONES, daysUntil, fmtBytes, fmtDate, fmtDateTime } from "@/lib/format";
 import type { Contract, Document, DocumentType, Paged } from "@/lib/types";
 import { Badge, Button, DescriptionList, Field, Input, Modal, Select, Textarea, cn } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { DaysLabel, VendorPicker, errorMessage } from "@/components/contracts/shared";
 
 export const DOCUMENT_TYPES: DocumentType[] = ["soc2", "iso27001", "insurance", "pen_test", "dpa", "financial", "policy", "other"];
-const ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.png,.jpg,.jpeg,.zip";
+const ALLOWED_EXTENSIONS = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "csv", "txt", "rtf", "odt", "ods", "png", "jpg", "jpeg", "gif", "webp", "heic", "tif", "tiff", "zip"];
+export const DOCUMENT_ACCEPT = ALLOWED_EXTENSIONS.map((e) => `.${e}`).join(",");
+const ACCEPT = DOCUMENT_ACCEPT;
 const MAX_BYTES = 50 * 1024 * 1024;
+export const EXPIRY_HINT_DAYS = 45;
+
+export function fileTypeError(fileName: string): string | null {
+  const m = /\.([a-z0-9]+)$/i.exec(fileName.trim());
+  if (m && ALLOWED_EXTENSIONS.includes(m[1].toLowerCase())) return null;
+  return `“${fileName}” is not a supported file type. Upload a PDF, Office document (Word, Excel, PowerPoint, CSV, TXT), image (PNG, JPG, GIF, WebP, TIFF) or ZIP archive.`;
+}
+
+export function PendingExpiryHint({ doc, className }: { doc: Pick<Document, "status" | "expiry_date">; className?: string }) {
+  if (doc.status !== "pending_review" || !doc.expiry_date) return null;
+  const d = daysUntil(doc.expiry_date);
+  if (d == null || d > EXPIRY_HINT_DAYS) return null;
+  const expired = d < 0;
+  return (
+    <span className={cn("mt-1 flex items-center gap-1 text-[11px] font-medium whitespace-nowrap", expired ? "text-danger-700" : "text-warning-700", className)} title={`Expiry date ${fmtDate(doc.expiry_date)}`}>
+      <AlertTriangle className="h-3 w-3 shrink-0" aria-hidden />
+      {expired ? "expired" : d === 0 ? "expires today" : `expires in ${d}d`}
+    </span>
+  );
+}
 
 export function useInvalidateDocuments() {
   const qc = useQueryClient();
@@ -73,6 +95,8 @@ function Dropzone({ file, onFile, error }: { file: File | null; onFile: (f: File
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
         data-testid="dropzone"
+        aria-invalid={error ? true : undefined}
+        aria-describedby={error ? "document-file-error" : undefined}
         className={cn(
           "flex cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed px-6 py-7 text-center transition-colors focus-ring",
           over ? "border-brand-500 bg-brand-50" : error ? "border-danger-600/60 bg-danger-50/40" : "border-ink-200 bg-ink-50/50 hover:border-brand-300 hover:bg-brand-50/40"
@@ -83,7 +107,7 @@ function Dropzone({ file, onFile, error }: { file: File | null; onFile: (f: File
         <p className="mt-1 text-xs text-ink-500">PDF, Office, image or ZIP up to 50 MB</p>
         <input ref={inputRef} type="file" accept={ACCEPT} className="hidden" onChange={(e) => { onFile(e.target.files?.[0] ?? null); e.target.value = ""; }} />
       </div>
-      {error && <p className="mt-1 text-xs text-danger-600">{error}</p>}
+      {error && <p id="document-file-error" role="alert" className="mt-1 text-xs text-danger-600">{error}</p>}
     </div>
   );
 }
@@ -102,11 +126,12 @@ export function DocumentUploadModal({ open, onClose, defaultVendorId, defaultCon
   const [nameTouched, setNameTouched] = useState(false);
   const [typeTouched, setTypeTouched] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [fileError, setFileError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
     setVendorId(defaultVendorId ?? null); setContractId(defaultContractId ? String(defaultContractId) : "");
-    setName(""); setType("soc2"); setIssued(""); setExpiry(""); setNotes(""); setFile(null);
+    setName(""); setType("soc2"); setIssued(""); setExpiry(""); setNotes(""); setFile(null); setFileError(null);
     setNameTouched(false); setTypeTouched(false); setSubmitted(false);
   }, [open, defaultVendorId, defaultContractId]);
 
@@ -117,6 +142,9 @@ export function DocumentUploadModal({ open, onClose, defaultVendorId, defaultCon
   });
 
   const onFile = (f: File | null) => {
+    const typeErr = f ? fileTypeError(f.name) : null;
+    setFileError(typeErr);
+    if (typeErr) { setFile(null); return; }
     setFile(f);
     if (f && !nameTouched) setName(prettyName(f.name));
     if (f && !typeTouched) { const g = guessType(f.name); if (g) setType(g); }
@@ -164,7 +192,7 @@ export function DocumentUploadModal({ open, onClose, defaultVendorId, defaultCon
     >
       <form id="doc-upload-form" onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2" noValidate>
         <div className="sm:col-span-2">
-          <Dropzone file={file} onFile={onFile} error={err("file")} />
+          <Dropzone file={file} onFile={onFile} error={fileError ?? err("file")} />
         </div>
         <div className="sm:col-span-2">
           <span className="mb-1.5 block text-sm font-medium text-ink-700">Vendor<span className="ml-0.5 text-danger-600">*</span></span>

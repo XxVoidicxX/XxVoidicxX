@@ -348,3 +348,16 @@ export function ToolbarSelect({ value, onChange, label, children, className }: {
     </select>
   );
 }
+
+export function HeaderActions({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex flex-wrap items-center justify-start gap-2 sm:justify-end max-w-[calc(100vw-2rem)] sm:max-w-[calc(100vw-3rem)] lg:max-w-[calc(100vw-19rem)]", className)}>{children}</div>;
+}
+
+export function useInFlight() {
+  const busy = useRef(false);
+  return useCallback((run: () => Promise<unknown>) => {
+    if (busy.current) return;
+    busy.current = true;
+    run().catch(() => undefined).finally(() => { busy.current = false; });
+  }, []);
+}

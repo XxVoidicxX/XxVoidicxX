@@ -6,7 +6,7 @@ import { useToast } from "@/components/ui/toast";
 import { useDebounce, useListParams, usePagedQuery, useUsers } from "@/lib/hooks";
 import { LABELS, fmtDateTime, fmtRelative, titleCase, type Tone } from "@/lib/format";
 import type { Activity } from "@/lib/types";
-import { entityPath } from "@/components/approvals/rules";
+import { entityPath, humanizeKey, humanizeValue } from "@/components/approvals/rules";
 
 const ENTITY_TYPES = ["vendor", "contract", "assessment", "finding", "document", "approval", "user", "settings", "template"] as const;
 const ACTIONS = ["create", "update", "status_change", "submit", "approve", "reject", "complete", "return", "comment", "login", "delete", "cancel"] as const;
@@ -192,12 +192,15 @@ export default function AuditLogPage() {
                                 <p className="text-xs text-ink-500 uppercase tracking-wide font-medium mb-1.5">Metadata</p>
                                 {meta?.length ? (
                                   <div className="flex flex-wrap gap-1.5">
-                                    {meta.map((m) => (
-                                      <span key={m.key} className="inline-flex max-w-full items-center rounded-md border border-ink-200 bg-ink-50 text-xs overflow-hidden">
-                                        <span className="px-2 py-1 font-medium text-ink-600 bg-ink-100 border-r border-ink-200">{m.key}</span>
-                                        <span className="px-2 py-1 font-mono text-ink-800 truncate">{m.value}</span>
-                                      </span>
-                                    ))}
+                                    {meta.map((m) => {
+                                      const human = humanizeValue(m.key, m.value, r.entity_type);
+                                      return (
+                                        <span key={m.key} className="inline-flex max-w-full items-center rounded-md border border-ink-200 bg-ink-50 text-xs overflow-hidden" title={`${m.key}: ${m.value}`}>
+                                          <span className="px-2 py-1 font-medium text-ink-600 bg-ink-100 border-r border-ink-200 whitespace-nowrap">{humanizeKey(m.key)}</span>
+                                          <span className={cn("px-2 py-1 text-ink-800 truncate", human === m.value && "font-mono")}>{human}</span>
+                                        </span>
+                                      );
+                                    })}
                                   </div>
                                 ) : <p className="text-xs text-ink-400">No additional metadata recorded for this event.</p>}
                               </div>

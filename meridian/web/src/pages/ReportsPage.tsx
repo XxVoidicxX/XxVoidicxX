@@ -129,7 +129,7 @@ export default function ReportsPage() {
       <style>{`
         @media print {
           @page { size: A4 landscape; margin: 12mm; }
-          .report-root { background: #fff; }
+          .report-root { background: #fff; zoom: 0.8; }
           .report-root, .report-root * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .report-root .shadow-card { box-shadow: none !important; }
           .report-rail { display: none !important; }
@@ -137,6 +137,11 @@ export default function ReportsPage() {
           .report-section { break-before: page; padding-top: 0 !important; }
           .report-section:first-of-type { break-before: auto; }
           .report-root .break-inside-avoid, .report-root tr { break-inside: avoid; }
+          .report-root .report-actions { display: none !important; }
+          .report-section { display: block !important; }
+          .report-section > .report-section-head { break-after: avoid; break-inside: avoid; page-break-after: avoid; }
+          .report-section > .report-section-head + * { break-before: avoid; page-break-before: avoid; }
+          .report-section .shadow-card, .report-section .report-keep { break-inside: avoid; page-break-inside: avoid; }
           .report-print-only { display: block !important; }
         }
         .report-print-only { display: none; }
@@ -150,7 +155,7 @@ export default function ReportsPage() {
             {asOf ? <>As of <time dateTime={d?.generated_at} className="font-medium text-ink-700">{format(asOf, "MMMM d, yyyy 'at' HH:mm")}</time> · live data, recalculated on refresh</> : <span className="skeleton rounded-md h-4 w-72 inline-block align-middle" />}
           </p>
         </div>
-        <div className="flex items-center gap-2 print:hidden">
+        <div className="report-actions flex items-center gap-2 print:hidden">
           <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => q.refetch()} disabled={q.isFetching} className={cn(q.isFetching && "[&>svg]:animate-spin")}>Refresh</Button>
           <Button variant="secondary" size="sm" icon={Printer} onClick={() => window.print()} disabled={!d}>Print</Button>
         </div>
@@ -225,7 +230,7 @@ function Headline({ data }: { data?: ReportsData }) {
 function Section({ id, index, title, description, onExport, children }: { id: string; index: number; title: string; description: string; onExport?: () => void; children: ReactNode }) {
   return (
     <section id={id} data-report-section className="report-section scroll-mt-24 space-y-4">
-      <div className="flex flex-wrap items-end justify-between gap-3 pb-3 border-b border-ink-200">
+      <div className="report-section-head flex flex-wrap items-end justify-between gap-3 pb-3 border-b border-ink-200">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-400 tnum">Section {index}</p>
           <h2 className="text-base font-semibold text-ink-900 mt-0.5">{title}</h2>

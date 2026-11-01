@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, ArrowRight, Building2, Check, ClipboardCheck, Pencil, Plus, Send, ShieldCheck, Star, Trash2, Users } from "lucide-react";
 import { Avatar, Badge, Button, Card, CardHeader, DescriptionList, EmptyState, Field, Input, PageHeader, Select, Textarea, cn } from "@/components/ui";
@@ -31,17 +31,34 @@ const COUNTRIES = ["United States", "Canada", "United Kingdom", "Ireland", "Germ
 let contactSeq = 1;
 const blankContact = (primary: boolean): ContactDraft => ({ key: contactSeq++, name: "", email: "", phone: "", role: "", is_primary: primary });
 
+const NAME_MAX = 160;
+const SPEND_MAX = 1_000_000_000_000;
+
+function spendError(raw: string): string | null {
+  if (raw.trim() === "") return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return "Enter a number";
+  if (n < 0) return "Annual spend cannot be negative";
+  if (n > SPEND_MAX) return "Annual spend must be $1 trillion or less";
+  return null;
+}
+
 function validateStep(step: number, f: FormState): Errors {
   const e: Errors = {};
   if (step === 0) {
-    if (!f.name.trim()) e.name = "Vendor name is required";
-    else if (f.name.trim().length < 2) e.name = "Name must be at least 2 characters";
+    const name = f.name.trim();
+    if (!name) e.name = "Vendor name is required";
+    else if (name.length < 2) e.name = "Name must be at least 2 characters";
+    else if (name.length > NAME_MAX) e.name = `Name must be ${NAME_MAX} characters or fewer (currently ${name.length})`;
+    if (f.legal_name.trim().length > 200) e.legal_name = "Legal name must be 200 characters or fewer";
     if (!f.category) e.category = "Select a category";
-    if (f.website.trim() && !URL_RE.test(f.website.trim())) e.website = "Enter a valid URL, e.g. https://vendor.com";
+    const site = f.website.trim();
+    if (site && !/^https?:\/\//i.test(site)) e.website = "Website must start with http:// or https://";
+    else if (site && !URL_RE.test(site)) e.website = "Enter a valid URL, e.g. https://vendor.com";
   }
   if (step === 1) {
     if (f.annual_spend.trim() === "") e.annual_spend = "Enter the expected annual spend (0 if none)";
-    else if (!Number.isFinite(Number(f.annual_spend)) || Number(f.annual_spend) < 0) e.annual_spend = "Annual spend must be a positive number";
+    else { const se = spendError(f.annual_spend); if (se) e.annual_spend = se; }
     if (!f.owner_id) e.owner_id = "Assign an internal business owner";
   }
   if (step === 2) {
@@ -65,16 +82,25 @@ export default function VendorNewPage() {
   const cadence = useReviewCadence();
   const categories = useQuery({ queryKey: ["vendor-categories"], queryFn: () => api.get<{ data: string[] }>("/api/vendors/categories").then((r) => r.data), staleTime: Infinity });
 
-  const [step, setStep] = useState(0);
+  const [sp, setSp] = useSearchParams();
+  const rawStep = Number(sp.get("step") || 1);
+  const step = Number.isInteger(rawStep) && rawStep >= 1 && rawStep <= STEPS.length ? rawStep - 1 : 0;
+  const setStep = useCallback((i: number, replace = false) => {
+    setSp((prev) => { const n = new URLSearchParams(prev); n.set("step", String(i + 1)); return n; }, { replace });
+  }, [setSp]);
   const [reached, setReached] = useState(0);
+  const inFlight = useRef(false);
   const [errors, setErrors] = useState<Errors>({});
   const [reviewTouched, setReviewTouched] = useState(false);
+  const [emailTouched, setEmailTouched] = useState<Set<number>>(new Set());
   const [form, setForm] = useState<FormState>(() => ({
     name: "", legal_name: "", category: "", website: "", country: "", description: "", services: "",
     data_access: "internal", annual_spend: "", owner_id: user ? String(user.id) : "", next_review_date: "", contacts: [blankContact(true)],
   }));
 
-  const spend = Number(form.annual_spend) || 0;
+  const rawSpend = Number(form.annual_spend);
+  const spend = Number.isFinite(rawSpend) && rawSpend > 0 ? Math.min(rawSpend, SPEND_MAX) : 0;
+  const liveSpendError = spendError(form.annual_spend);
   const inherent = computeInherentRisk({ data_access: form.data_access, annual_spend: spend, category: form.category });
   const tier = tierFromInherent(inherent);
   const suggestedReview = addMonthsIso(cadence[tier]);
@@ -98,11 +124,21 @@ export default function VendorNewPage() {
     return { ...f, contacts: rest };
   });
 
+  useEffect(() => {
+    for (let i = 0; i < step; i++) {
+      if (Object.keys(validateStep(i, form)).length) { setStep(i, true); return; }
+    }
+    setReached((r) => Math.max(r, step));
+  }, [step]);
+
+  const focusFirstInvalid = () => requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus());
+
   const goTo = (target: number) => {
-    if (target <= step) { setErrors({}); setStep(target); return; }
+    if (target === step) return;
+    if (target < step) { setErrors({}); setStep(target); return; }
     for (let i = step; i < target; i++) {
       const e = validateStep(i, form);
-      if (Object.keys(e).length) { setErrors(e); setStep(i); return; }
+      if (Object.keys(e).length) { setErrors(e); if (i !== step) setStep(i); focusFirstInvalid(); return; }
     }
     setErrors({});
     setStep(target);
@@ -139,17 +175,19 @@ export default function VendorNewPage() {
       qc.invalidateQueries({ queryKey: ["approvals"] });
       if (submitError) toast("error", `${vendor.name} was created, but submission failed`, submitError);
       else toast("success", submitted ? `${vendor.name} submitted for onboarding approval` : `${vendor.name} saved as prospect`, submitted ? "Approvers have been notified." : undefined);
-      navigate(`/vendors/${vendor.id}`);
+      navigate(`/vendors/${vendor.id}`, { replace: true });
     },
     onError: (e) => toast("error", "Could not create vendor", errorMessage(e)),
   });
 
   const submit = (withApproval: boolean) => {
+    if (inFlight.current || create.isPending) return;
     for (let i = 0; i < 3; i++) {
       const e = validateStep(i, form);
-      if (Object.keys(e).length) { setErrors(e); setStep(i); toast("error", "Please fix the highlighted fields"); return; }
+      if (Object.keys(e).length) { setErrors(e); setStep(i); toast("error", "Please fix the highlighted fields"); focusFirstInvalid(); return; }
     }
-    create.mutate(withApproval);
+    inFlight.current = true;
+    create.mutate(withApproval, { onSettled: (_d, err) => { if (err) inFlight.current = false; } });
   };
 
   if (!canWrite) {
@@ -180,25 +218,27 @@ export default function VendorNewPage() {
               <section className="space-y-5">
                 <SectionTitle title="Company profile" description="Who is this vendor and what will they do for us?" />
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Vendor name" required error={errors.name}>
-                    <Input autoFocus value={form.name} invalid={!!errors.name} onChange={(e) => patch("name", e.target.value)} placeholder="e.g. Acme Analytics" />
-                  </Field>
-                  <Field label="Legal entity name" hint="As it appears on contracts">
-                    <Input value={form.legal_name} onChange={(e) => patch("legal_name", e.target.value)} placeholder="e.g. Acme Analytics, Inc." />
-                  </Field>
-                  <Field label="Category" required error={errors.category}>
-                    <Select value={form.category} invalid={!!errors.category} onChange={(e) => patch("category", e.target.value)}>
-                      <option value="">Select a category…</option>
-                      {(categories.data ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
-                    </Select>
-                  </Field>
+                  <WizField id="vendor-name" label="Vendor name" required error={errors.name} hint={form.name.length > NAME_MAX - 20 ? `${form.name.trim().length} / ${NAME_MAX} characters` : undefined}>
+                    {(a) => <Input {...a} autoFocus value={form.name} maxLength={NAME_MAX + 40} invalid={!!errors.name} onChange={(e) => patch("name", e.target.value)} placeholder="e.g. Acme Analytics" />}
+                  </WizField>
+                  <WizField id="vendor-legal-name" label="Legal entity name" hint="As it appears on contracts" error={errors.legal_name}>
+                    {(a) => <Input {...a} value={form.legal_name} invalid={!!errors.legal_name} onChange={(e) => patch("legal_name", e.target.value)} placeholder="e.g. Acme Analytics, Inc." />}
+                  </WizField>
+                  <WizField id="vendor-category" label="Category" required error={errors.category}>
+                    {(a) => (
+                      <Select {...a} value={form.category} invalid={!!errors.category} onChange={(e) => patch("category", e.target.value)}>
+                        <option value="">Select a category…</option>
+                        {(categories.data ?? []).map((c) => <option key={c} value={c}>{c}</option>)}
+                      </Select>
+                    )}
+                  </WizField>
                   <Field label="Country" hint="Primary country of operation">
                     <Input list="vendor-countries" value={form.country} onChange={(e) => patch("country", e.target.value)} placeholder="e.g. United States" />
                     <datalist id="vendor-countries">{COUNTRIES.map((c) => <option key={c} value={c} />)}</datalist>
                   </Field>
-                  <Field label="Website" error={errors.website} className="sm:col-span-2">
-                    <Input value={form.website} invalid={!!errors.website} onChange={(e) => patch("website", e.target.value)} placeholder="https://www.vendor.com" />
-                  </Field>
+                  <WizField id="vendor-website" label="Website" error={errors.website} hint="Include http:// or https://" className="sm:col-span-2">
+                    {(a) => <Input {...a} type="url" value={form.website} invalid={!!errors.website} onChange={(e) => patch("website", e.target.value)} placeholder="https://www.vendor.com" />}
+                  </WizField>
                   <Field label="Description" hint="Business purpose and context for this relationship" className="sm:col-span-2">
                     <Textarea value={form.description} onChange={(e) => patch("description", e.target.value)} rows={3} placeholder="e.g. Customer analytics platform used by the growth team." />
                   </Field>
@@ -217,18 +257,22 @@ export default function VendorNewPage() {
                   <DataAccessPicker value={form.data_access} onChange={(v) => patch("data_access", v)} />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <Field label="Expected annual spend (USD)" required error={errors.annual_spend} hint={form.annual_spend ? fmtMoney(spend) : "Thresholds: $50K · $250K · $1M"}>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-400 pointer-events-none">$</span>
-                      <Input type="number" min={0} step={1000} inputMode="numeric" className="pl-7 tnum" value={form.annual_spend} invalid={!!errors.annual_spend} onChange={(e) => patch("annual_spend", e.target.value)} placeholder="0" />
-                    </div>
-                  </Field>
-                  <Field label="Business owner" required error={errors.owner_id} hint="Accountable for the relationship internally">
-                    <Select value={form.owner_id} invalid={!!errors.owner_id} onChange={(e) => patch("owner_id", e.target.value)}>
-                      <option value="">Select owner…</option>
-                      {owners.map((u) => <option key={u.id} value={u.id}>{u.name} — {LABELS.role[u.role]}</option>)}
-                    </Select>
-                  </Field>
+                  <WizField id="vendor-spend" label="Expected annual spend (USD)" required error={errors.annual_spend ?? liveSpendError ?? undefined} hint={form.annual_spend ? fmtMoney(spend) : "Thresholds: $50K · $250K · $1M"}>
+                    {(a) => (
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-ink-400 pointer-events-none">$</span>
+                        <Input {...a} type="number" min={0} max={SPEND_MAX} step={1000} inputMode="numeric" className="pl-7 tnum" value={form.annual_spend} invalid={!!(errors.annual_spend || liveSpendError)} onChange={(e) => patch("annual_spend", e.target.value)} placeholder="0" />
+                      </div>
+                    )}
+                  </WizField>
+                  <WizField id="vendor-owner" label="Business owner" required error={errors.owner_id} hint="Accountable for the relationship internally">
+                    {(a) => (
+                      <Select {...a} value={form.owner_id} invalid={!!errors.owner_id} onChange={(e) => patch("owner_id", e.target.value)}>
+                        <option value="">Select owner…</option>
+                        {owners.map((u) => <option key={u.id} value={u.id}>{u.name} — {LABELS.role[u.role]}</option>)}
+                      </Select>
+                    )}
+                  </WizField>
                   <Field label="First review date" hint={reviewTouched ? <button type="button" className="text-brand-700 hover:underline" onClick={() => setReviewTouched(false)}>Reset to {LABELS.tier[tier].toLowerCase()} tier cadence ({cadence[tier]} months)</button> : `Defaults to the ${LABELS.tier[tier].toLowerCase()} tier cadence of ${cadence[tier]} months`}>
                     <Input type="date" value={form.next_review_date} onChange={(e) => { setReviewTouched(true); patch("next_review_date", e.target.value); }} />
                   </Field>
@@ -242,7 +286,7 @@ export default function VendorNewPage() {
                   <SectionTitle title="Vendor contacts" description="People at the vendor we work with. The primary contact receives assessment requests." />
                   <Button variant="secondary" size="sm" icon={Plus} onClick={addContact}>Add contact</Button>
                 </div>
-                {errors.contacts && <p className="text-sm text-danger-600">{errors.contacts}</p>}
+                {errors.contacts && <p className="text-sm text-danger-600" role="alert">{errors.contacts}</p>}
                 {form.contacts.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-ink-300"><EmptyState icon={Users} title="No contacts yet" description="Add at least one contact before continuing." action={<Button size="sm" icon={Plus} onClick={addContact}>Add contact</Button>} /></div>
                 ) : (
@@ -260,18 +304,18 @@ export default function VendorNewPage() {
                           </div>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <Field label="Full name" required error={errors[`c.${c.key}.name`]}>
-                            <Input value={c.name} invalid={!!errors[`c.${c.key}.name`]} onChange={(e) => patchContact(c.key, { name: e.target.value })} placeholder="e.g. Jamie Rivera" />
-                          </Field>
+                          <WizField id={`contact-${c.key}-name`} label="Full name" required error={errors[`c.${c.key}.name`]}>
+                            {(a) => <Input {...a} value={c.name} maxLength={120} invalid={!!errors[`c.${c.key}.name`]} onChange={(e) => patchContact(c.key, { name: e.target.value })} placeholder="e.g. Jamie Rivera" />}
+                          </WizField>
                           <Field label="Role / title">
                             <Input value={c.role} onChange={(e) => patchContact(c.key, { role: e.target.value })} placeholder="e.g. Account Executive" />
                           </Field>
-                          <Field label="Email" required error={errors[`c.${c.key}.email`]}>
-                            <Input type="email" value={c.email} invalid={!!errors[`c.${c.key}.email`]} onChange={(e) => patchContact(c.key, { email: e.target.value })} placeholder="name@vendor.com" />
-                          </Field>
-                          <Field label="Phone" error={errors[`c.${c.key}.phone`]}>
-                            <Input type="tel" value={c.phone} invalid={!!errors[`c.${c.key}.phone`]} onChange={(e) => patchContact(c.key, { phone: e.target.value })} placeholder="+1 555 010 0000" />
-                          </Field>
+                          <WizField id={`contact-${c.key}-email`} label="Email" required error={errors[`c.${c.key}.email`] ?? (c.email.trim() && !EMAIL_RE.test(c.email.trim()) && emailTouched.has(c.key) ? "Enter a valid email address" : undefined)}>
+                            {(a) => <Input {...a} type="email" value={c.email} invalid={!!a["aria-invalid"]} onBlur={() => setEmailTouched((t) => new Set(t).add(c.key))} onChange={(e) => patchContact(c.key, { email: e.target.value })} placeholder="name@vendor.com" />}
+                          </WizField>
+                          <WizField id={`contact-${c.key}-phone`} label="Phone" error={errors[`c.${c.key}.phone`]}>
+                            {(a) => <Input {...a} type="tel" value={c.phone} invalid={!!errors[`c.${c.key}.phone`]} onChange={(e) => patchContact(c.key, { phone: e.target.value })} placeholder="+1 555 010 0000" />}
+                          </WizField>
                         </div>
                       </div>
                     ))}
@@ -323,15 +367,15 @@ export default function VendorNewPage() {
 
           <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-ink-100 bg-ink-50/60 rounded-b-[var(--radius-card)]">
             <div className="flex items-center gap-2">
-              {step > 0 ? <Button variant="secondary" icon={ArrowLeft} onClick={() => goTo(step - 1)} disabled={create.isPending}>Back</Button> : <Button variant="ghost" onClick={() => navigate("/vendors")}>Cancel</Button>}
+              {step > 0 ? <Button variant="secondary" icon={ArrowLeft} onClick={() => goTo(step - 1)} disabled={create.isPending || create.isSuccess}>Back</Button> : <Button variant="ghost" onClick={() => navigate("/vendors")}>Cancel</Button>}
               <span className="text-xs text-ink-500 hidden sm:inline">Step {step + 1} of {STEPS.length}</span>
             </div>
             {step < 3 ? (
               <Button iconRight={ArrowRight} onClick={() => goTo(step + 1)}>Continue</Button>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <Button variant="secondary" onClick={() => submit(false)} loading={create.isPending && create.variables === false} disabled={create.isPending}>Save as prospect</Button>
-                <Button icon={Send} onClick={() => submit(true)} loading={create.isPending && create.variables === true} disabled={create.isPending}>Save and submit for onboarding approval</Button>
+                <Button variant="secondary" onClick={() => submit(false)} loading={create.isPending && create.variables === false} disabled={create.isPending || create.isSuccess} aria-busy={create.isPending}>Save as prospect</Button>
+                <Button icon={Send} onClick={() => submit(true)} loading={create.isPending && create.variables === true} disabled={create.isPending || create.isSuccess} aria-busy={create.isPending}>Save and submit for onboarding approval</Button>
               </div>
             )}
           </div>
@@ -341,6 +385,7 @@ export default function VendorNewPage() {
           <Card>
             <CardHeader title="Live risk preview" description="Updates as you fill in the profile" />
             <RiskPreview dataAccess={form.data_access} annualSpend={spend} category={form.category} cadenceMonths={cadence} />
+            {liveSpendError && <p className="mt-3 text-xs text-danger-600">Preview ignores the invalid spend value until it is corrected.</p>}
           </Card>
           <Card>
             <CardHeader title="What happens next" />
@@ -386,6 +431,18 @@ function Stepper({ step, reached, onSelect }: { step: number; reached: number; o
         );
       })}
     </ol>
+  );
+}
+
+type AriaProps = { id: string; "aria-invalid"?: true; "aria-describedby"?: string };
+function WizField({ id, label, error, hint, required, className, children }: { id: string; label: ReactNode; error?: string; hint?: ReactNode; required?: boolean; className?: string; children: (a: AriaProps) => ReactNode }) {
+  const errId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  return (
+    <Field label={label} required={required} className={className}>
+      {children({ id, "aria-invalid": error ? true : undefined, "aria-describedby": error ? errId : hint ? hintId : undefined })}
+      {error ? <span id={errId} role="alert" className="block text-xs text-danger-600 mt-1">{error}</span> : hint ? <span id={hintId} className="block text-xs text-ink-500 mt-1">{hint}</span> : null}
+    </Field>
   );
 }
 

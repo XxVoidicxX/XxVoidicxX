@@ -10,7 +10,7 @@ import type { Document, DocumentStatus } from "@/lib/types";
 import { Avatar, Badge, Button, Card, DataTable, EmptyState, PageHeader, Pagination, Skeleton, Stat, cn, type Column } from "@/components/ui";
 import { useToast } from "@/components/ui/toast";
 import { CELL, ConfirmDialog, DaysLabel, Dropdown, FilterChips, SHORT_DOCUMENT_TYPE, SearchInput, ToolbarSelect, errorMessage, useDebouncedSearch, useVendorOptions, type ChipOption, type MenuItem } from "@/components/contracts/shared";
-import { DOCUMENT_TYPES, DocumentEditModal, DocumentReviewModal, DocumentUploadModal, useInvalidateDocuments } from "@/components/documents/DocumentModals";
+import { DOCUMENT_TYPES, DocumentEditModal, DocumentReviewModal, DocumentUploadModal, PendingExpiryHint, useInvalidateDocuments } from "@/components/documents/DocumentModals";
 
 interface DocumentSummary { total: number; counts: Record<DocumentStatus, number>; upcoming: Document[] }
 
@@ -83,7 +83,7 @@ export default function DocumentsPage() {
       render: (d) => <Link to={`/vendors/${d.vendor_id}`} title={d.vendor_name} className="block max-w-[130px] truncate text-ink-700 hover:text-brand-700 hover:underline 2xl:max-w-[200px]">{d.vendor_name}</Link>,
     },
     { key: "type", header: "Type", sortable: true, className: CELL, render: (d) => <Badge tone="neutral" size="xs"><span title={LABELS.documentType[d.type]}>{SHORT_DOCUMENT_TYPE[d.type] ?? d.type}</span></Badge> },
-    { key: "status", header: "Status", sortable: true, className: CELL, render: (d) => <Badge tone={TONES.documentStatus[d.status]} dot>{LABELS.documentStatus[d.status]}</Badge> },
+    { key: "status", header: "Status", sortable: true, className: CELL, render: (d) => <div><Badge tone={TONES.documentStatus[d.status]} dot>{LABELS.documentStatus[d.status]}</Badge><PendingExpiryHint doc={d} /></div> },
     { key: "issued_date", header: "Issued", sortable: true, className: CELL, render: (d) => <span className="whitespace-nowrap text-ink-600 tnum">{fmtDate(d.issued_date)}</span> },
     {
       key: "expiry_date", header: "Expiry", sortable: true, className: CELL,

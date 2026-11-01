@@ -178,6 +178,9 @@ vendorsRouter.patch(
     recomputeVendorRisk(id);
     const changes = Object.keys(v).filter((k) => (existing as any)[k] !== (v as any)[k]);
     if (v.status && v.status !== existing.status) {
+      if (!["prospect", "onboarding"].includes(v.status)) {
+        run("UPDATE approvals SET status = 'cancelled', decided_at = datetime('now'), comment = COALESCE(comment, 'Cancelled: vendor status changed directly') WHERE status = 'pending' AND type = 'vendor_onboarding' AND entity_type = 'vendor' AND entity_id = ?", id);
+      }
       logActivity(req.user!.id, "status_change", "vendor", id, `${existing.name} status changed ${existing.status} → ${v.status}`, { from: existing.status, to: v.status });
       if (existing.owner_id && existing.owner_id !== req.user!.id) notify(existing.owner_id, `Vendor status changed`, `${existing.name} is now ${v.status.replace("_", " ")}`, `/vendors/${id}`);
     } else {
