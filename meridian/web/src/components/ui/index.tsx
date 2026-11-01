@@ -84,7 +84,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 ));
 Textarea.displayName = "Textarea";
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }>(({ className, invalid, children, ...props }, ref) => (
-  <select ref={ref} className={cn(controlBase, "h-9 pr-8 appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2364748b%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22m6 9 6 6 6-6%22/></svg>')] bg-no-repeat bg-[right_0.5rem_center]", invalid && "border-danger-600", className)} {...props}>
+  <select ref={ref} className={cn(className?.includes("w-") ? controlBase.replace("w-full ", "") : controlBase, "h-9 pr-8 appearance-none bg-[url('data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2216%22 height=%2216%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2364748b%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22><path d=%22m6 9 6 6 6-6%22/></svg>')] bg-no-repeat bg-[right_0.5rem_center]", invalid && "border-danger-600", className)} {...props}>
     {children}
   </select>
 ));
@@ -240,7 +240,7 @@ export function DataTable<T extends { id: number | string }>({ columns, rows, lo
             {columns.map((c) => (
               <th key={c.key} style={{ width: c.width }} className={cn("px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-ink-500 whitespace-nowrap", alignCls(c.align), c.className)}>
                 {c.sortable && onSort ? (
-                  <button onClick={() => onSort(c.key)} className={cn("inline-flex items-center gap-1 hover:text-ink-800 focus-ring rounded", sort?.key === c.key && "text-brand-700")}>
+                  <button onClick={() => onSort(c.key)} className={cn("inline-flex items-center gap-1 uppercase tracking-wide hover:text-ink-800 focus-ring rounded", sort?.key === c.key && "text-brand-700")}>
                     {c.header}
                     <span className="text-[10px]">{sort?.key === c.key ? (sort.dir === "asc" ? "▲" : "▼") : <span className="text-ink-300">↕</span>}</span>
                   </button>

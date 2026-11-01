@@ -39,18 +39,35 @@ const SELECT = `SELECT v.*, u.name AS owner_name,
   (SELECT MAX(completed_at) FROM assessments a WHERE a.vendor_id = v.id AND a.status = 'completed') AS last_assessed_at
   FROM vendors v LEFT JOIN users u ON u.id = v.owner_id`;
 
+function buildWhere(query: Record<string, unknown>) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (query.q) { where.push("(v.name LIKE ? OR v.legal_name LIKE ? OR v.category LIKE ?)"); const q = `%${query.q}%`; params.push(q, q, q); }
+  for (const f of ["status", "tier", "category", "data_access", "owner_id"]) {
+    if (query[f]) { const vals = String(query[f]).split(","); where.push(`v.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
+  }
+  return { whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "", params };
+}
+
+const SORT_EXPR: Record<string, string> = {
+  tier: "CASE tier WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END",
+  status: "CASE status WHEN 'prospect' THEN 1 WHEN 'onboarding' THEN 2 WHEN 'active' THEN 3 WHEN 'under_review' THEN 4 WHEN 'offboarding' THEN 5 ELSE 6 END",
+};
+const NULLS_LAST = new Set(["next_review_date", "last_assessed_at", "owner_name"]);
+
+function vendorOrder(req: Parameters<typeof orderBy>[0]) {
+  const raw = orderBy(req, ["name", "tier", "status", "residual_risk", "inherent_risk", "annual_spend", "next_review_date", "updated_at", "created_at", "category", "owner_name", "open_findings", "document_alerts", "last_assessed_at", "active_contracts"], "name");
+  const [col, dir] = raw.split(" ");
+  const expr = SORT_EXPR[col] ?? col;
+  return `${NULLS_LAST.has(col) ? `${col} IS NULL, ` : ""}${expr} ${dir}, v.name ASC`;
+}
+
 vendorsRouter.get(
   "/",
   wrap((req, res) => {
     const { page, limit, offset } = paginate(req);
-    const where: string[] = [];
-    const params: unknown[] = [];
-    if (req.query.q) { where.push("(v.name LIKE ? OR v.legal_name LIKE ? OR v.category LIKE ?)"); const q = `%${req.query.q}%`; params.push(q, q, q); }
-    for (const f of ["status", "tier", "category", "data_access", "owner_id"]) {
-      if (req.query[f]) { const vals = String(req.query[f]).split(","); where.push(`v.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
-    }
-    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const order = orderBy(req, ["name", "tier", "status", "residual_risk", "inherent_risk", "annual_spend", "next_review_date", "updated_at", "created_at", "category"], "name");
+    const { whereSql, params } = buildWhere(req.query);
+    const order = vendorOrder(req);
     const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM vendors v ${whereSql}`, ...params)!.n;
     if (req.query.format === "csv") {
       const rows = all(`${SELECT} ${whereSql} ORDER BY ${order}`, ...params);
@@ -60,6 +77,31 @@ vendorsRouter.get(
     }
     const data = all(`${SELECT} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
+  })
+);
+
+vendorsRouter.get(
+  "/summary",
+  wrap((req, res) => {
+    const { whereSql, params } = buildWhere(req.query);
+    const row = get<Record<string, number | null>>(
+      `SELECT COUNT(*) AS total,
+        SUM(CASE WHEN v.status = 'active' THEN 1 ELSE 0 END) AS active,
+        SUM(CASE WHEN v.status IN ('prospect','onboarding') THEN 1 ELSE 0 END) AS onboarding,
+        SUM(CASE WHEN v.tier = 'critical' THEN 1 ELSE 0 END) AS critical,
+        SUM(CASE WHEN v.tier = 'high' THEN 1 ELSE 0 END) AS high,
+        SUM(CASE WHEN v.next_review_date IS NOT NULL AND v.next_review_date < date('now') AND v.status NOT IN ('terminated') THEN 1 ELSE 0 END) AS overdue_reviews,
+        SUM(CASE WHEN v.residual_risk >= 60 THEN 1 ELSE 0 END) AS elevated_residual,
+        COALESCE(SUM(v.annual_spend), 0) AS total_spend,
+        ROUND(AVG(v.residual_risk), 0) AS avg_residual,
+        (SELECT COUNT(*) FROM findings f WHERE f.status IN ('open','in_remediation') AND f.vendor_id IN (SELECT v.id FROM vendors v ${whereSql})) AS open_findings
+      FROM vendors v ${whereSql}`,
+      ...params,
+      ...params
+    )!;
+    const out: Record<string, number> = {};
+    for (const [k, val] of Object.entries(row)) out[k] = Number(val ?? 0);
+    res.json({ data: out });
   })
 );
 
@@ -117,7 +159,8 @@ vendorsRouter.patch(
     const { contacts: _c, ...v } = body;
     const merged = { ...existing, ...v };
     const inherent = computeInherentRisk(merged);
-    update("vendors", id, { ...v, inherent_risk: inherent, updated_at: new Date().toISOString() });
+    const tier = v.tier ?? (inherent !== existing.inherent_risk ? tierFromInherent(inherent) : existing.tier);
+    update("vendors", id, { ...v, tier, inherent_risk: inherent, updated_at: new Date().toISOString() });
     recomputeVendorRisk(id);
     const changes = Object.keys(v).filter((k) => (existing as any)[k] !== (v as any)[k]);
     if (v.status && v.status !== existing.status) {

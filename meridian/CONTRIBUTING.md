@@ -34,7 +34,7 @@ Approvers cannot decide their own requests (segregation of duties → 403).
   - `POST /api/vendors/:id/submit-onboarding` (prospect/onboarding → creates approval)
   - `POST /api/vendors/:id/contacts`, `DELETE /api/vendors/:id/contacts/:cid`
   - `POST /api/contracts/:id/submit-for-approval`; obligations: `POST/PATCH/DELETE /api/contracts/:id/obligations[/:oid]`
-  - `POST /api/assessments` {vendor_id, template_id, assigned_to?, reviewer_id?, due_date?}; `PUT /api/assessments/:id/answers` {answers:[{question_id, answer:'yes'|'partial'|'no'|'na'|null, note?}]}; `POST /api/assessments/:id/submit`; `POST /api/assessments/:id/review` {decision:'complete'|'return', summary?}
+  - `POST /api/assessments` {vendor_id, template_id, assigned_to?, reviewer_id?, due_date?}; `PUT /api/assessments/:id/answers` {answers:[{question_id, answer:'yes'|'partial'|'no'|'na'|null, note?}]}; `POST /api/assessments/:id/submit`; `POST /api/assessments/:id/start-review` (submitted → under_review, reviewer = caller; assignee cannot review own work); `POST /api/assessments/:id/review` {decision:'complete'|'return', summary?}
   - Templates: `GET /api/assessments/templates`, `GET /api/assessments/templates/:id`, `POST /api/assessments/templates` {name, framework, description, questions:[{section,text,guidance?,weight}]}, `PATCH /api/assessments/templates/:id`
   - `POST /api/findings/:id/request-risk-acceptance` {justification}
   - `POST /api/approvals/:id/decide` {decision:'approved'|'rejected', comment?} (comment required on reject); `POST /api/approvals/:id/cancel`; `GET /api/approvals?mine=true` = ones my role can decide

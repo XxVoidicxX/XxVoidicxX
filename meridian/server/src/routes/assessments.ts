@@ -22,13 +22,16 @@ assessmentsRouter.get(
     const where: string[] = [];
     const params: unknown[] = [];
     if (req.query.q) { where.push("(a.title LIKE ? OR v.name LIKE ?)"); const q = `%${req.query.q}%`; params.push(q, q); }
-    for (const f of ["status", "vendor_id", "assigned_to", "template_id", "risk_rating"]) {
+    for (const f of ["status", "vendor_id", "assigned_to", "reviewer_id", "template_id", "risk_rating"]) {
       if (req.query[f]) { const vals = String(req.query[f]).split(","); where.push(`a.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
     }
+    if (req.query.overdue === "true") where.push("a.due_date < date('now') AND a.status != 'completed'");
+    if (req.query.completed_from) { where.push("a.completed_at >= ?"); params.push(String(req.query.completed_from)); }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const order = orderBy(req, ["title", "due_date", "status", "score", "vendor_name", "created_at", "completed_at"], "due_date");
+    const order = orderBy(req, ["title", "due_date", "status", "score", "vendor_name", "created_at", "completed_at", "risk_rating", "assignee_name", "progress"], "due_date");
+    const orderSql = order.startsWith("progress ") ? `CAST(answered_count AS REAL) / MAX(question_count, 1) ${order.slice(9)}` : order.startsWith("risk_rating ") ? `(a.risk_rating IS NULL), CASE a.risk_rating WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END ${order.slice(12)}` : order;
     const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM assessments a JOIN vendors v ON v.id = a.vendor_id ${whereSql}`, ...params)!.n;
-    const data = all(`${SELECT} ${whereSql} ORDER BY ${order} LIMIT ? OFFSET ?`, ...params, limit, offset);
+    const data = all(`${SELECT} ${whereSql} ORDER BY ${orderSql}, a.id LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
   })
 );
@@ -135,7 +138,7 @@ assessmentsRouter.put(
     const id = Number(req.params.id);
     const a = get<any>("SELECT * FROM assessments WHERE id = ?", id);
     if (!a) throw notFound("Assessment");
-    if (["completed"].includes(a.status)) throw new HttpError(400, "Assessment is completed and locked");
+    if (["submitted", "under_review", "completed"].includes(a.status)) throw new HttpError(400, "Assessment is locked while awaiting review or completed");
     const body = validate(z.object({ answers: z.array(z.object({ question_id: z.number().int(), answer: z.enum(["yes", "partial", "no", "na"]).nullable(), note: z.string().nullable().optional() })) }), req.body);
     tx(() => {
       for (const ans of body.answers) {
@@ -171,6 +174,21 @@ assessmentsRouter.post(
 );
 
 assessmentsRouter.post(
+  "/:id/start-review",
+  canWrite,
+  wrap((req, res) => {
+    const id = Number(req.params.id);
+    const a = get<any>("SELECT * FROM assessments WHERE id = ?", id);
+    if (!a) throw notFound("Assessment");
+    if (a.status !== "submitted") throw new HttpError(400, "Only submitted assessments can be taken into review");
+    if (a.assigned_to === req.user!.id && req.user!.role !== "admin") throw new HttpError(403, "You cannot review an assessment you completed (segregation of duties)");
+    update("assessments", id, { status: "under_review", reviewer_id: req.user!.id });
+    logActivity(req.user!.id, "review", "assessment", id, `Started review of ${a.title}`);
+    res.json({ data: get(`${SELECT} WHERE a.id = ?`, id) });
+  })
+);
+
+assessmentsRouter.post(
   "/:id/review",
   canWrite,
   wrap((req, res) => {
@@ -178,9 +196,10 @@ assessmentsRouter.post(
     const a = get<any>("SELECT * FROM assessments WHERE id = ?", id);
     if (!a) throw notFound("Assessment");
     if (!["submitted", "under_review"].includes(a.status)) throw new HttpError(400, "Assessment is not awaiting review");
+    if (a.assigned_to === req.user!.id && req.user!.role !== "admin") throw new HttpError(403, "You cannot review an assessment you completed (segregation of duties)");
     const body = validate(z.object({ decision: z.enum(["complete", "return"]), summary: z.string().optional().nullable() }), req.body);
     if (body.decision === "complete") {
-      update("assessments", id, { status: "completed", completed_at: new Date().toISOString(), summary: body.summary ?? a.summary, reviewer_id: a.reviewer_id ?? req.user!.id });
+      update("assessments", id, { status: "completed", completed_at: new Date().toISOString(), summary: body.summary ?? a.summary, reviewer_id: req.user!.id });
       const next = new Date(); next.setFullYear(next.getFullYear() + 1);
       update("vendors", a.vendor_id, { next_review_date: next.toISOString().slice(0, 10) });
       recomputeVendorRisk(a.vendor_id);
