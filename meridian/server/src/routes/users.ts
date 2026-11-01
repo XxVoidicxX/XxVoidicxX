@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update } from "../db.js";
 import { hashPassword, requireAuth, requireRole } from "../auth.js";
-import { notFound, validate, wrap } from "../http.js";
+import { HttpError, notFound, validate, wrap } from "../http.js";
 import { logActivity } from "../activity.js";
 
 export const usersRouter = Router();
@@ -33,15 +33,18 @@ usersRouter.patch(
   requireRole("admin"),
   wrap((req, res) => {
     const id = Number(req.params.id);
-    if (!get("SELECT id FROM users WHERE id = ?", id)) throw notFound("User");
+    const existing = get<{ id: number; name: string }>("SELECT id, name FROM users WHERE id = ?", id);
+    if (!existing) throw notFound("User");
     const body = validate(
       z.object({ name: z.string().min(1).optional(), role: roleEnum.optional(), department: z.string().nullable().optional(), title: z.string().nullable().optional(), active: z.boolean().optional(), password: z.string().min(6).optional() }),
       req.body
     );
+    if (id === req.user!.id && (body.active === false || (body.role && body.role !== "admin"))) throw new HttpError(400, "You cannot deactivate or demote your own account");
     const data: Record<string, unknown> = { ...body };
+    if (body.active !== undefined) data.active = body.active ? 1 : 0;
     if (body.password) data.password = hashPassword(body.password);
     update("users", id, data);
-    logActivity(req.user!.id, "update", "user", id, `Updated user #${id}`, body.password ? { ...body, password: "***" } : body);
+    logActivity(req.user!.id, "update", "user", id, `Updated user ${existing.name}`, body.password ? { ...body, password: "***" } : body);
     res.json({ data: get(`SELECT ${cols} FROM users WHERE id = ?`, id) });
   })
 );

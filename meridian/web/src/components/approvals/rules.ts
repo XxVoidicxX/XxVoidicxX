@@ -1,0 +1,61 @@
+import type { QueryClient } from "@tanstack/react-query";
+import type { Approval, ApprovalDetail, ApprovalType, Role } from "@/lib/types";
+import { parseDate } from "@/lib/format";
+
+export type ApprovalRow = Approval & { vendor_id?: number | null };
+export type ApprovalDetailRow = ApprovalDetail & { vendor_id?: number | null; approver_roles?: Role[] };
+
+export const APPROVER_ROLES: Record<ApprovalType, Role[]> = {
+  vendor_onboarding: ["admin", "risk_analyst"],
+  contract: ["admin", "procurement"],
+  risk_acceptance: ["admin"],
+  offboarding: ["admin", "risk_analyst"],
+  document: ["admin", "risk_analyst"],
+};
+
+export const APPROVAL_TYPES = Object.keys(APPROVER_ROLES) as ApprovalType[];
+export const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
+export const TYPE_SHORT: Record<string, string> = { vendor_onboarding: "Onboarding", contract: "Contract", risk_acceptance: "Risk acceptance", offboarding: "Offboarding", document: "Document" };
+export const PRIORITY_LABEL: Record<string, string> = { urgent: "Urgent", high: "High", normal: "Normal", low: "Low" };
+
+export function entityPath(entityType: string, entityId: number | null | undefined): string | null {
+  if (entityId == null) return null;
+  switch (entityType) {
+    case "vendor": return `/vendors/${entityId}`;
+    case "contract": return `/contracts/${entityId}`;
+    case "assessment": return `/assessments/${entityId}`;
+    case "finding": return `/findings/${entityId}`;
+    case "approval": return `/approvals/${entityId}`;
+    default: return null;
+  }
+}
+
+export function ageHours(from: string | null | undefined, to?: string | null): number | null {
+  const a = parseDate(from);
+  if (!a) return null;
+  const b = to ? parseDate(to) : new Date();
+  if (!b) return null;
+  return Math.max(0, (b.getTime() - a.getTime()) / 3_600_000);
+}
+
+export function fmtDuration(hours: number | null): string {
+  if (hours == null) return "—";
+  if (hours < 1) return "<1h";
+  if (hours < 48) return `${Math.floor(hours)}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
+export function firstLine(s: string | null | undefined): string {
+  return (s ?? "").split("\n").find((l) => l.trim())?.trim() ?? "";
+}
+
+const ENTITY_KEYS: Record<string, string[]> = {
+  vendor: ["vendor", "vendors"],
+  contract: ["contract", "contracts"],
+  finding: ["finding", "findings"],
+};
+
+export function invalidateAfterDecision(qc: QueryClient, entityType?: string) {
+  const keys = ["approvals", "approvals-badge", "notifications", "activity", "comments", "dashboard", "reports", ...(entityType ? ENTITY_KEYS[entityType] ?? [] : []), "vendor", "vendors"];
+  for (const k of new Set(keys)) qc.invalidateQueries({ queryKey: [k] });
+}

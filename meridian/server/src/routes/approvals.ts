@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, update } from "../db.js";
-import { requireAuth, requireRole } from "../auth.js";
+import { canWrite, requireAuth, requireRole } from "../auth.js";
 import { HttpError, notFound, orderBy, paginate, validate, wrap } from "../http.js";
 import { logActivity, notify } from "../activity.js";
 import { recomputeVendorRisk } from "../risk.js";
@@ -10,7 +10,8 @@ export const approvalsRouter = Router();
 approvalsRouter.use(requireAuth);
 
 const SELECT = `SELECT a.*, u.name AS requested_by_name, ap.name AS approver_name,
-  CASE a.entity_type WHEN 'vendor' THEN (SELECT name FROM vendors WHERE id = a.entity_id) WHEN 'contract' THEN (SELECT v.name FROM contracts c JOIN vendors v ON v.id = c.vendor_id WHERE c.id = a.entity_id) WHEN 'finding' THEN (SELECT v.name FROM findings f JOIN vendors v ON v.id = f.vendor_id WHERE f.id = a.entity_id) END AS vendor_name
+  CASE a.entity_type WHEN 'vendor' THEN (SELECT name FROM vendors WHERE id = a.entity_id) WHEN 'contract' THEN (SELECT v.name FROM contracts c JOIN vendors v ON v.id = c.vendor_id WHERE c.id = a.entity_id) WHEN 'finding' THEN (SELECT v.name FROM findings f JOIN vendors v ON v.id = f.vendor_id WHERE f.id = a.entity_id) END AS vendor_name,
+  CASE a.entity_type WHEN 'vendor' THEN a.entity_id WHEN 'contract' THEN (SELECT vendor_id FROM contracts WHERE id = a.entity_id) WHEN 'finding' THEN (SELECT vendor_id FROM findings WHERE id = a.entity_id) END AS vendor_id
   FROM approvals a JOIN users u ON u.id = a.requested_by LEFT JOIN users ap ON ap.id = a.approver_id`;
 
 const APPROVER_ROLES: Record<string, string[]> = {
@@ -30,6 +31,8 @@ approvalsRouter.get(
     for (const f of ["status", "type", "priority", "requested_by"]) {
       if (req.query[f]) { const vals = String(req.query[f]).split(","); where.push(`a.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
     }
+    if (req.query.q) { where.push("(a.title LIKE ? OR a.description LIKE ?)"); params.push(`%${req.query.q}%`, `%${req.query.q}%`); }
+    if (req.query.decided_from) { where.push("a.decided_at >= ?"); params.push(String(req.query.decided_from)); }
     if (req.query.mine === "true") {
       const roles = Object.entries(APPROVER_ROLES).filter(([, r]) => r.includes(req.user!.role)).map(([t]) => t);
       if (!roles.length) where.push("0");
@@ -51,6 +54,7 @@ approvalsRouter.get(
     const a = get<any>(`${SELECT} WHERE a.id = ?`, id);
     if (!a) throw notFound("Approval");
     a.comments = all("SELECT c.*, u.name AS author_name FROM comments c JOIN users u ON u.id = c.author_id WHERE c.entity_type = 'approval' AND c.entity_id = ? ORDER BY c.created_at", id);
+    a.approver_roles = APPROVER_ROLES[a.type] ?? [];
     a.can_decide = a.status === "pending" && (APPROVER_ROLES[a.type] ?? []).includes(req.user!.role) && a.requested_by !== req.user!.id;
     if (a.entity_type === "vendor") a.entity = get("SELECT v.*, u.name AS owner_name FROM vendors v LEFT JOIN users u ON u.id = v.owner_id WHERE v.id = ?", a.entity_id);
     if (a.entity_type === "contract") a.entity = get("SELECT c.*, v.name AS vendor_name FROM contracts c JOIN vendors v ON v.id = c.vendor_id WHERE c.id = ?", a.entity_id);
@@ -72,7 +76,7 @@ approvalsRouter.post(
     const body = validate(z.object({ decision: z.enum(["approved", "rejected"]), comment: z.string().optional().nullable() }), req.body);
     if (body.decision === "rejected" && !body.comment?.trim()) throw new HttpError(400, "A comment is required when rejecting");
     const now = new Date().toISOString();
-    update("approvals", id, { status: body.decision, comment: body.comment ?? null, approver_id: req.user!.id, decided_at: now });
+    update("approvals", id, { status: body.decision, comment: body.comment?.trim() || null, approver_id: req.user!.id, decided_at: now });
     const approved = body.decision === "approved";
     if (a.entity_type === "vendor" && a.type === "vendor_onboarding") {
       update("vendors", a.entity_id, { status: approved ? "active" : "prospect", onboarded_at: approved ? now : null, updated_at: now });
@@ -99,6 +103,7 @@ approvalsRouter.post(
 
 approvalsRouter.post(
   "/:id/cancel",
+  canWrite,
   wrap((req, res) => {
     const id = Number(req.params.id);
     const a = get<any>("SELECT * FROM approvals WHERE id = ?", id);

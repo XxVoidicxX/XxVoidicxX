@@ -17,6 +17,7 @@ commentsRouter.get(
 );
 commentsRouter.post(
   "/",
+  canWrite,
   wrap((req, res) => {
     const body = validate(z.object({ entity_type: entityEnum, entity_id: z.number().int(), body: z.string().min(1).max(4000) }), req.body);
     const id = insert("comments", { ...body, author_id: req.user!.id });
@@ -26,6 +27,7 @@ commentsRouter.post(
 );
 commentsRouter.delete(
   "/:id",
+  canWrite,
   wrap((req, res) => {
     const c = get<any>("SELECT * FROM comments WHERE id = ?", Number(req.params.id));
     if (!c) throw notFound("Comment");
@@ -47,11 +49,11 @@ activityRouter.get(
       if (req.query[f]) { const vals = String(req.query[f]).split(","); where.push(`l.${f} IN (${vals.map(() => "?").join(",")})`); params.push(...vals); }
     }
     if (req.query.entity_id) { where.push("l.entity_id = ?"); params.push(Number(req.query.entity_id)); }
-    if (req.query.q) { where.push("l.summary LIKE ?"); params.push(`%${req.query.q}%`); }
+    if (req.query.q) { where.push("(l.summary LIKE ? OR u.name LIKE ? OR l.metadata LIKE ?)"); params.push(`%${req.query.q}%`, `%${req.query.q}%`, `%${req.query.q}%`); }
     if (req.query.from) { where.push("l.created_at >= ?"); params.push(String(req.query.from)); }
     if (req.query.to) { where.push("l.created_at <= ?"); params.push(String(req.query.to) + "T23:59:59"); }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-    const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM activity_log l ${whereSql}`, ...params)!.n;
+    const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ${whereSql}`, ...params)!.n;
     const data = all(`SELECT l.*, u.name AS actor_name, u.role AS actor_role FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ${whereSql} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
   })
@@ -112,6 +114,15 @@ settingsRouter.put(
   requireRole("admin"),
   wrap((req, res) => {
     const body = validate(z.record(z.unknown()), req.body);
+    const int = (min: number, max: number) => z.number().int().min(min).max(max);
+    const known = z.object({
+      org_name: z.string().trim().min(1).max(120).optional(),
+      document_expiry_warning_days: int(1, 365).optional(),
+      contract_renewal_notice_days: int(1, 365).optional(),
+      review_cadence_months: z.object({ critical: int(1, 60), high: int(1, 60), medium: int(1, 60), low: int(1, 60) }).optional(),
+      risk_thresholds: z.object({ low: int(1, 100), medium: int(1, 100), high: int(1, 100) }).refine((t) => t.low > t.medium && t.medium > t.high, { message: "Thresholds must satisfy low > medium > high" }).optional(),
+    });
+    validate(known, body);
     for (const [k, v] of Object.entries(body)) {
       run("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", k, JSON.stringify(v));
     }
