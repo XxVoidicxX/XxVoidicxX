@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { all, get, insert, run } from "../db.js";
 import { requireAuth, canWrite, requireRole } from "../auth.js";
-import { HttpError, notFound, paginate, validate, wrap } from "../http.js";
+import { HttpError, notFound, paginate, validate, wrap, toCsv } from "../http.js";
 import { logActivity } from "../activity.js";
 
 export const commentsRouter = Router();
@@ -56,6 +56,12 @@ activityRouter.get(
     if (req.query.to) { where.push("l.created_at <= ?"); params.push(String(req.query.to) + "T23:59:59"); }
     const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
     const total = get<{ n: number }>(`SELECT COUNT(*) AS n FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ${whereSql}`, ...params)!.n;
+    if (req.query.format === "csv") {
+      const rows = all(`SELECT l.id, l.created_at, u.name AS actor_name, u.role AS actor_role, l.action, l.entity_type, l.entity_id, l.summary, l.metadata FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ${whereSql} ORDER BY l.created_at DESC, l.id DESC LIMIT 50000`, ...params);
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=audit-log.csv");
+      return res.send(toCsv(rows as any, ["id", "created_at", "actor_name", "actor_role", "action", "entity_type", "entity_id", "summary", "metadata"]));
+    }
     const data = all(`SELECT l.*, u.name AS actor_name, u.role AS actor_role FROM activity_log l LEFT JOIN users u ON u.id = l.actor_id ${whereSql} ORDER BY l.created_at DESC, l.id DESC LIMIT ? OFFSET ?`, ...params, limit, offset);
     res.json({ data, total, page, limit });
   })

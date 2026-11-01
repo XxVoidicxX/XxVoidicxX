@@ -3,7 +3,7 @@ import { z } from "zod";
 import { all, get, insert, update, run } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
 import { HttpError, notFound, orderBy, paginate, validate, wrap, shortText, longText, optDate, dateOrder } from "../http.js";
-import { logActivity } from "../activity.js";
+import { logActivity, setting } from "../activity.js";
 
 export const documentsRouter = Router();
 documentsRouter.use(requireAuth);
@@ -12,8 +12,10 @@ const typeEnum = z.enum(["soc2", "iso27001", "insurance", "pen_test", "dpa", "fi
 const statusEnum = z.enum(["valid", "expiring", "expired", "pending_review", "rejected"]);
 
 export function refreshDocumentStatuses() {
+  const days = Number(setting<number>("document_expiry_warning_days")) || 45;
   run(`UPDATE documents SET status = 'expired' WHERE status IN ('valid','expiring') AND expiry_date IS NOT NULL AND expiry_date < date('now')`);
-  run(`UPDATE documents SET status = 'expiring' WHERE status = 'valid' AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+45 days')`);
+  run(`UPDATE documents SET status = 'expiring' WHERE status = 'valid' AND expiry_date IS NOT NULL AND expiry_date <= date('now', ?)`, `+${days} days`);
+  run(`UPDATE documents SET status = 'valid' WHERE status = 'expiring' AND expiry_date IS NOT NULL AND expiry_date > date('now', ?)`, `+${days} days`);
 }
 
 const SELECT = `SELECT d.*, v.name AS vendor_name, v.tier AS vendor_tier, u.name AS uploaded_by_name, c.title AS contract_title,

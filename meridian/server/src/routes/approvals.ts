@@ -3,7 +3,7 @@ import { z } from "zod";
 import { all, get, insert, update } from "../db.js";
 import { canWrite, requireAuth, requireRole } from "../auth.js";
 import { HttpError, notFound, orderBy, paginate, validate, wrap } from "../http.js";
-import { logActivity, notify } from "../activity.js";
+import { logActivity, notify, nextReviewDate } from "../activity.js";
 import { recomputeVendorRisk } from "../risk.js";
 
 export const approvalsRouter = Router();
@@ -84,11 +84,8 @@ approvalsRouter.post(
     update("approvals", id, { status: body.decision, comment: body.comment?.trim() || null, approver_id: req.user!.id, decided_at: now });
     const approved = body.decision === "approved";
     if (a.entity_type === "vendor" && a.type === "vendor_onboarding") {
-      const vendorRow = get<any>("SELECT tier FROM vendors WHERE id = ?", a.entity_id);
-      const cadenceRow = get<{ value: string }>("SELECT value FROM settings WHERE key = 'review_cadence_months'");
-      const cadence = cadenceRow ? JSON.parse(cadenceRow.value) : { critical: 6, high: 12, medium: 24, low: 36 };
-      const next = new Date(); next.setMonth(next.getMonth() + (cadence[vendorRow?.tier ?? "medium"] ?? 12));
-      update("vendors", a.entity_id, { status: approved ? "active" : "prospect", onboarded_at: approved ? now : null, next_review_date: approved ? next.toISOString().slice(0, 10) : null, updated_at: now });
+      const vendorRow = get<{ tier: string }>("SELECT tier FROM vendors WHERE id = ?", a.entity_id);
+      update("vendors", a.entity_id, { status: approved ? "active" : "prospect", onboarded_at: approved ? now : null, next_review_date: approved ? nextReviewDate(vendorRow?.tier ?? "medium") : null, updated_at: now });
       logActivity(req.user!.id, approved ? "approve" : "reject", "vendor", a.entity_id, `Onboarding ${body.decision}${body.comment ? `: ${body.comment}` : ""}`);
     } else if (a.entity_type === "vendor" && a.type === "offboarding") {
       update("vendors", a.entity_id, { status: approved ? "terminated" : "active", updated_at: now });

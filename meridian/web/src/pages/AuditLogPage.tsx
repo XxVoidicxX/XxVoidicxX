@@ -38,15 +38,6 @@ function parseMeta(raw: string | null): { key: string; value: string }[] | null 
   }
 }
 
-function toCsv(rows: Activity[]): string {
-  const cols = ["id", "created_at", "actor_name", "actor_role", "action", "entity_type", "entity_id", "summary", "metadata"] as const;
-  const esc = (v: unknown) => {
-    const s = v == null ? "" : String(v);
-    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  return [cols.join(","), ...rows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\r\n");
-}
-
 const isoDay = (offsetDays: number) => new Date(Date.now() - offsetDays * 86_400_000).toISOString().slice(0, 10);
 
 export default function AuditLogPage() {
@@ -69,18 +60,12 @@ export default function AuditLogPage() {
   const preset = (days: number) => lp.set({ from: isoDay(days), to: isoDay(0) });
 
   const exportCsv = () => {
-    if (!rows.length) return;
-    const blob = new Blob(["﻿" + toCsv(rows)], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const el = document.createElement("a");
-    el.href = url;
-    el.download = `meridian-audit-log-${isoDay(0)}-p${lp.page}.csv`;
-    document.body.appendChild(el);
-    el.click();
-    el.remove();
-    URL.revokeObjectURL(url);
-    toast("success", "Export ready", `${rows.length} events exported from page ${lp.page}`);
+    const sp = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q: q || undefined, ...f })) if (v) sp.set(k, String(v));
+    sp.set("format", "csv");
+    window.open(`/api/activity?${sp.toString()}`, "_blank");
   };
+
 
   const cols = 6;
   return (

@@ -74,7 +74,7 @@ export const canWrite = requireRole(...WRITE_ROLES);
 const attempts = new Map<string, { count: number; until: number }>();
 export function checkLoginAllowed(key: string) {
   const a = attempts.get(key);
-  if (a && a.count >= 10 && Date.now() < a.until) throw new HttpErrorLike(429, "Too many failed sign-in attempts. Try again in 15 minutes.");
+  if (a && a.count >= 25 && Date.now() < a.until) throw new HttpErrorLike(429, "Too many failed sign-in attempts from this address. Try again in 15 minutes.");
 }
 export function recordLoginFailure(key: string) {
   const a = attempts.get(key);

@@ -131,7 +131,7 @@ export default function DashboardPage() {
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[104px] rounded-[var(--radius-card)]" />)
         ) : (
           <>
-            <Stat label="Active vendors" value={fmtNumber(k.vendors_active)} icon={Building2} hint={`${k.vendors_critical} critical · ${k.vendors_onboarding} onboarding`} to="/vendors?status=active" />
+            <Stat label="Active vendors" value={fmtNumber(k.vendors_active)} icon={Building2} hint={`${k.vendors_critical} critical · ${k.vendors_onboarding} onboarding`} to="/vendors?status=active&tier=critical" />
             <Stat label="Avg residual risk" value={k.avg_residual_risk} tone={riskTone(k.avg_residual_risk)} icon={Gauge} hint="Active vendors · scale 0–100" to="/vendors?status=active&sort=residual_risk&dir=desc" />
             <Stat label="Open findings" value={fmtNumber(k.findings_open)} tone={k.findings_critical_open > 0 ? "danger" : undefined} icon={ShieldAlert} hint={`${k.findings_critical_open} critical, ${k.findings_overdue} overdue`} to="/findings?status=open,in_remediation" />
             <Stat label="Contracts ≤ 90d" value={fmtNumber(k.contracts_expiring_90)} tone={k.contracts_expiring_90 > 0 ? "warning" : undefined} icon={CalendarClock} hint={`${fmtMoney(k.contracts_expiring_90_value, "USD", true)} up for renewal`} to="/contracts?expiring_within=90" />
@@ -191,7 +191,7 @@ function RiskPosture({ data, fetching }: { data?: DashboardData; fetching: boole
         <ul className="divide-y divide-ink-100">
           {rows.map((r) => (
             <li key={r.tier}>
-              <Link to={`/vendors?tier=${r.tier}`} className="grid grid-cols-[minmax(0,1fr)_64px_72px] sm:grid-cols-[1fr_64px_120px_84px] gap-2 sm:gap-3 items-center px-1 py-2 rounded hover:bg-ink-50 focus-ring">
+              <Link to={`/vendors?tier=${r.tier}&status=prospect,onboarding,active,under_review,offboarding`} className="grid grid-cols-[minmax(0,1fr)_64px_72px] sm:grid-cols-[1fr_64px_120px_84px] gap-2 sm:gap-3 items-center px-1 py-2 rounded hover:bg-ink-50 focus-ring">
                 <span className="inline-flex min-w-0 items-center gap-2 text-sm text-ink-800 font-medium"><span className="h-2 w-2 rounded-full" style={{ background: TIER_COLORS[r.tier] }} />{LABELS.tier[r.tier]}</span>
                 <span className="text-right text-sm tnum text-ink-900 font-semibold">{r.count}<span className="ml-1.5 text-xs font-normal text-ink-500">{total ? Math.round((r.count / total) * 100) : 0}%</span></span>
                 <span className="hidden sm:block"><RiskScore value={r.avg} size="sm" /></span>

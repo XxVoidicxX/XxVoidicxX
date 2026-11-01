@@ -11,7 +11,7 @@ authRouter.post(
   "/login",
   wrap((req, res) => {
     const { email, password } = validate(z.object({ email: z.string().email().max(200), password: z.string().min(1).max(200) }), req.body);
-    const key = `${req.ip}|${email.toLowerCase()}`;
+    const key = String(req.ip);
     try { checkLoginAllowed(key); } catch (e: any) { throw new HttpError(e.status, e.message); }
     const row = get<any>("SELECT * FROM users WHERE lower(email) = lower(?)", email);
     if (!row || !row.active || !verifyPassword(password, row.password)) { recordLoginFailure(key); throw new HttpError(401, "Invalid email or password"); }

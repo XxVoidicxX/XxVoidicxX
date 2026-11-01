@@ -3,7 +3,7 @@ import { z } from "zod";
 import { all, get, insert, update, run, tx } from "../db.js";
 import { requireAuth, canWrite } from "../auth.js";
 import { HttpError, notFound, orderBy, paginate, validate, wrap, optDate } from "../http.js";
-import { logActivity, notify } from "../activity.js";
+import { logActivity, notify, nextReviewDate } from "../activity.js";
 import { computeAssessmentScore, ratingFromScore, recomputeVendorRisk } from "../risk.js";
 
 export const assessmentsRouter = Router();
@@ -200,8 +200,8 @@ assessmentsRouter.post(
     const body = validate(z.object({ decision: z.enum(["complete", "return"]), summary: z.string().optional().nullable() }), req.body);
     if (body.decision === "complete") {
       update("assessments", id, { status: "completed", completed_at: new Date().toISOString(), summary: body.summary ?? a.summary, reviewer_id: req.user!.id });
-      const next = new Date(); next.setFullYear(next.getFullYear() + 1);
-      update("vendors", a.vendor_id, { next_review_date: next.toISOString().slice(0, 10) });
+      const tierRow = get<{ tier: string }>("SELECT tier FROM vendors WHERE id = ?", a.vendor_id);
+      update("vendors", a.vendor_id, { next_review_date: nextReviewDate(tierRow?.tier ?? "medium") });
       recomputeVendorRisk(a.vendor_id);
       logActivity(req.user!.id, "complete", "assessment", id, `Completed review of ${a.title} — rated ${a.risk_rating}`);
       if (a.assigned_to) notify(a.assigned_to, "Assessment completed", `${a.title} was reviewed and completed`, `/assessments/${id}`);

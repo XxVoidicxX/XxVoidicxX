@@ -333,7 +333,7 @@ describe("hardening", () => {
     assert.ok(text.includes("'=HYPERLINK"));
   });
   test("login throttling and bearer logout", async () => {
-    for (let i = 0; i < 10; i++) await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "throttle@meridian.example", password: "nope" }) });
+    for (let i = 0; i < 25; i++) await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "throttle@meridian.example", password: "nope" }) });
     const r = await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "throttle@meridian.example", password: "nope" }) });
     assert.equal(r.status, 429);
     const tok = (await (await fetch(`${base}/api/auth/login`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: OWNER, password: "Meridian!2026" }) })).json() as any).token;
